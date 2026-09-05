@@ -132,6 +132,33 @@ with sync_playwright() as p:
     pg.click("nav.tabs button[data-page='punch']"); pg.wait_for_timeout(400)
     opts = pg.eval_on_selector_all("#pkTarget option", "els=>els.map(e=>e.textContent)")
     check("打刻画面のターゲット一覧に出る", "SMILe" in opts, opts)
+    check("未選択の文言が「（ターゲット未選択）」", opts[0] == "（ターゲット未選択）", opts[0])
+    # 行の形：ラベルを置かず、選ぶ欄の右に［＋ターゲット］
+    bar = pg.eval_on_selector("#pkTarget", "el=>el.parentElement")
+    lbl = pg.eval_on_selector_all("#pg-punch .bar label.f", "els=>els.map(e=>e.textContent)")
+    check("打刻画面に「ターゲット」のラベルが無い", "ターゲット" not in lbl, lbl)
+    order = pg.evaluate("""()=>{const b=document.getElementById('pkTarget').parentElement;
+      return [...b.children].map(e=>e.id||e.tagName);}""")
+    check("選ぶ欄の右に＋ターゲット", order == ["pkTarget", "bAddTarget"], order)
+    sx = pg.evaluate("""()=>{const s=document.getElementById('pkTarget').getBoundingClientRect();
+      const b=document.getElementById('bAddTarget').getBoundingClientRect();
+      return [Math.round(s.left), Math.round(s.right), Math.round(b.left)];}""")
+    check("＋ターゲットが選ぶ欄より右にある", sx[2] >= sx[1], sx)
+    # ＋ターゲットで足すと、そのまま選ばれる
+    pg.click("#bAddTarget"); pg.wait_for_timeout(400)
+    check("＋ターゲットで登録画面が開く", "ターゲットを足す" in pg.inner_text("#dlgTitle"),
+          pg.inner_text("#dlgTitle"))
+    pg.fill("#tName", "その場で登録")
+    pg.get_by_role("button", name="保存").click(); pg.wait_for_timeout(700)
+    sel = pg.eval_on_selector("#pkTarget", "el=>el.options[el.selectedIndex].textContent")
+    check("足したターゲットが自動で選ばれる", sel == "その場で登録", sel)
+    ov2 = pg.evaluate("()=>[document.documentElement.scrollWidth, window.innerWidth]")
+    check("打刻画面で横にはみ出さない", ov2[0] <= ov2[1], ov2)
+    # 打刻すると、そのターゲットが記録に入る
+    pg.get_by_role("button", name="保守作業", exact=False).first.click()
+    pg.wait_for_timeout(500)
+    check("選んだターゲットが打刻に付く", "その場で登録" in pg.inner_text("#nowTarget"),
+          pg.inner_text("#nowTarget"))
     pg.fill("#pkFind", "テスト"); pg.wait_for_timeout(300)
     # 単体/結合1・2/システム/移行/運用テスト＋追加テスト作業 の7件
     check("作業名で絞り込める", pg.locator("#workGrid .wbtn").count() == 7,
@@ -166,7 +193,8 @@ with sync_playwright() as p:
           head == "開始日時,終了日時,作業名称,作業ID,ターゲット名称,ターゲットID,作業時間,作業時間(分),進捗度,メモ",
           head)
     body = raw.decode("utf-8-sig").splitlines()
-    check("CSVの行数が記録数と合う", len(body) == 4, len(body))
+    nall = pg.evaluate("async()=>{const a=await getAll('entries');return a.length;}")
+    check("CSVの行数が記録数と合う（見出し＋記録）", len(body) == nall + 1, (len(body), nall))
 
     with pg.expect_download() as di2:
         pg.click("#bCsvSummary")
@@ -183,9 +211,9 @@ with sync_playwright() as p:
     d3 = di3.value; p3 = os.path.join(DL, d3.suggested_filename); d3.save_as(p3)
     js = json.load(open(p3, encoding="utf-8"))
     check("控えJSONにBOMが付かない", open(p3, "rb").read()[:1] != b"\xef")
-    check("控えに記録が入る", len(js.get("entries", [])) == 3, len(js.get("entries", [])))
+    check("控えに記録が入る", len(js.get("entries", [])) == nall, (len(js.get("entries", [])), nall))
     check("控えに作業とターゲットが入る",
-          len(js.get("works", [])) == 22 and len(js.get("targets", [])) == 1,
+          len(js.get("works", [])) == 22 and len(js.get("targets", [])) == 2,
           (len(js.get("works", [])), len(js.get("targets", []))))
     # 一日の始まりを直す
     pg.fill("#cDay", "07:00")
@@ -197,11 +225,11 @@ with sync_playwright() as p:
     # ⑨ 入れ直しても残る（IndexedDB）
     pg.reload(); pg.wait_for_timeout(1200)
     check("開き直しても設定が残る", pg.evaluate("CFG")["day_start"] == "07:00")
-    check("開き直しても実行中の作業が残る", "ドキュメント" in pg.inner_text("#nowWork"),
+    check("開き直しても実行中の作業が残る", "保守作業" in pg.inner_text("#nowWork"),
           pg.inner_text("#nowWork"))
     pg.click("nav.tabs button[data-page='log']"); pg.wait_for_timeout(600)
-    check("開き直しても記録が残る", pg.locator("#logBody .row").count() == 3,
-          pg.locator("#logBody .row").count())
+    check("開き直しても記録が残る", pg.locator("#logBody .row").count() == nall,
+          (pg.locator("#logBody .row").count(), nall))
 
     # ⑩ 終了する
     pg.click("nav.tabs button[data-page='punch']"); pg.wait_for_timeout(400)
@@ -231,7 +259,7 @@ with sync_playwright() as p:
     check("CSVに出てくるターゲットが足される", "T900" in pg.inner_text("#mstTarget"))
 
     # ⑫b 初期マスタの読み込み直し（CSVを差し替えて押す）
-    orig = open(os.path.join(ROOT, "初期マスタ.csv"), encoding="utf-8-sig").read()
+    orig = open(os.path.join(ROOT, "初期マスタ.csv"), "rb").read().decode("utf-8-sig")
     try:
         # PC版が出すのと同じ cp932 で置き換える（実際の運用と同じ形）
         open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="cp932", newline="").write(
@@ -267,7 +295,8 @@ with sync_playwright() as p:
               bool(w22) and w22["name"] == "追加テスト作業", w22)
     finally:
         # PC版が出すのと同じ cp932 で置き換える（実際の運用と同じ形）
-        open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="cp932", newline="").write(orig)
+        # 元（UTF-8 BOM付き）に戻す
+        open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="utf-8-sig", newline="").write(orig)
 
     # ⑫ PC版のCSV（cp932）を取り込む
     imp932 = os.path.join(DL, "作業記録_cp932.csv")

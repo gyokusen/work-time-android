@@ -216,8 +216,8 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
   </div>
 
   <div class="bar">
-    <label class="f">ターゲット</label>
-    <select id="pkTarget"><option value="">（未選択）</option></select>
+    <select id="pkTarget"><option value="">（ターゲット未選択）</option></select>
+    <button class="btn sm" id="bAddTarget">＋ターゲット</button>
   </div>
   <div class="bar">
     <input type="text" id="pkFind" placeholder="作業名で絞り込む">
@@ -318,7 +318,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -593,7 +593,7 @@ function renderWorkGrid(){
 }
 function renderTargetSelect(){
   const s = $("pkTarget"); const keep = s.value;
-  s.innerHTML = '<option value="">（未選択）</option>';
+  s.innerHTML = '<option value="">（ターゲット未選択）</option>';
   TARGETS.filter(t => t.enabled).forEach(t => {
     const o = document.createElement("option");
     o.value = t.target_id; o.textContent = t.name;
@@ -884,7 +884,9 @@ function openWorkDlg(w){
       }}
     ].filter(Boolean));
 }
-function openTargetDlg(t){
+/* onSaved を渡すと、保存したあとその target_id で呼び返す。
+   打刻画面の［＋ターゲット］は、これで登録したものをそのまま選ぶ。 */
+function openTargetDlg(t, onSaved){
   const isNew = !t;
   const b = t || {target_id:"", name:"", sort_no:999, enabled:1};
   dlg(isNew ? "ターゲットを足す" : "ターゲットを直す",
@@ -919,6 +921,7 @@ function openTargetDlg(t){
         await putRec("targets", rec);
         closeDlg(); toast(isNew ? "ターゲット「" + name + "」を " + rec.target_id + " で足しました" : "直しました");
         await loadMasters(); renderMasters();
+        if(onSaved) onSaved(rec.target_id);
       }}
     ].filter(Boolean));
 }
@@ -1268,6 +1271,8 @@ async function boot(){
   $("bAddWork").onclick = () => openWorkDlg(null);
   $("mAddWork").onclick = () => openWorkDlg(null);
   $("mAddTarget").onclick = () => openTargetDlg(null);
+  // 打刻画面の［＋ターゲット］。足したものを、そのまま選んだ状態にする
+  $("bAddTarget").onclick = () => openTargetDlg(null, (id) => { $("pkTarget").value = id; });
   $("pkFind").oninput = renderWorkGrid;
   $("nowNote").oninput = () => noteDirty = true;
   $("nowProgress").oninput = () => progDirty = true;
