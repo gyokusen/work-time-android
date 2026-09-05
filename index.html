@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1F4E79">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon/icon-192.png">
+<link rel="apple-touch-icon" href="icon/icon-192.png">
+<title>作業時間管理</title>
+<style>
+:root{
+  --bg:#F6F1E4; --panel:#FBF8F0; --line:#D8CFB8; --line2:#EAE2CD;
+  --ink:#241F14; --sub:#6B6350; --navy:#1F4E79; --navy-d:#163A5B;
+  --warn:#8A5A00; --err:#A22C2C; --ok:#2C6E3F;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif; font-size:15px;
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+button{font-family:inherit; font-size:15px; cursor:pointer}
+input,select,textarea{font-family:inherit; font-size:16px; color:var(--ink)}
+
+.btn{border:1px solid var(--line); background:var(--panel); color:var(--ink);
+     padding:9px 14px; border-radius:7px; line-height:1.4; min-height:40px}
+.btn:active{background:#EFE8D6}
+.btn:disabled{opacity:.45}
+.btn.primary{background:var(--navy); border-color:var(--navy); color:#fff}
+.btn.danger{color:var(--err); border-color:#D9BDBD}
+.btn.sm{padding:6px 10px; font-size:13px; min-height:34px}
+.btn.q{width:38px;height:38px;padding:0;border-radius:50%;font-weight:700;color:var(--navy)}
+
+/* ---- ヘッダ ---- */
+header{
+  background:var(--panel); border-bottom:1px solid var(--line);
+  padding:calc(8px + var(--safe-t)) 12px 8px; display:flex; align-items:center; gap:8px; flex:none;
+}
+.brand{font-size:16px; font-weight:700; color:var(--navy); letter-spacing:.03em; white-space:nowrap}
+.ver{font-size:10px; color:var(--sub); font-weight:400; margin-left:4px}
+.chips{display:flex; gap:6px; margin-left:auto; align-items:center}
+.chip{background:#fff; border:1px solid var(--line2); border-radius:14px;
+      padding:3px 9px; font-size:11px; color:var(--sub); white-space:nowrap}
+.chip b{color:var(--ink); font-size:13px; margin-left:3px}
+.chip.rest b{color:var(--warn)}
+
+/* ---- ページ ---- */
+main{flex:1; min-height:0; position:relative}
+.page{display:none; position:absolute; inset:0; overflow:auto; -webkit-overflow-scrolling:touch;
+      padding-bottom:14px}
+.page.on{display:block}
+
+/* ---- 下タブ ---- */
+nav.tabs{display:flex; background:var(--panel); border-top:1px solid var(--line); flex:none;
+     padding-bottom:var(--safe-b)}
+nav.tabs button{flex:1; border:0; background:transparent; color:var(--sub);
+     padding:9px 0 8px; font-size:12px; display:flex; flex-direction:column;
+     align-items:center; gap:3px; min-height:52px}
+nav.tabs button .ic{font-size:17px; line-height:1}
+nav.tabs button.on{color:var(--navy); font-weight:700}
+nav.tabs button.on .ic{transform:translateY(-1px)}
+
+/* ---- ツールバー ---- */
+.bar{padding:9px 12px; display:flex; gap:7px; align-items:center; flex-wrap:wrap;
+     border-bottom:1px solid var(--line2)}
+.bar input[type=text],.bar input[type=date],.bar select{
+  border:1px solid var(--line); background:#fff; border-radius:7px; padding:8px 9px; min-height:40px}
+.bar select,.bar input[type=text]{flex:1; min-width:0}
+.sp{flex:1}
+label.f{color:var(--sub); font-size:12px}
+
+/* ---- 打刻 ---- */
+.now{margin:12px 12px 0; background:#fff; border:1px solid var(--line);
+     border-radius:10px; padding:13px 14px}
+.now.idle{background:#FDFBF4}
+.now.warn{border-color:#E9DCB9; background:#FBF4E4}
+.now-work{font-size:20px; font-weight:700; color:var(--navy); line-height:1.35;
+          word-break:break-all}
+.now-target{font-size:12.5px; color:var(--sub); margin-top:2px}
+.now-elapsed{font-size:38px; font-weight:700; font-variant-numeric:tabular-nums;
+             line-height:1.1; margin-top:6px}
+.now-sub{color:var(--sub); font-size:12px; margin-top:5px; line-height:1.6}
+.now-acts{display:flex; gap:7px; align-items:center; margin-top:11px; flex-wrap:wrap}
+.now-acts input[type=number]{width:74px; border:1px solid var(--line); border-radius:7px;
+  padding:8px; background:#fff; min-height:40px}
+.now-acts input[type=text]{flex:1; min-width:140px; border:1px solid var(--line);
+  border-radius:7px; padding:8px 9px; background:#fff; min-height:40px}
+
+.picker{padding:11px 12px 14px}
+.pick-head{color:var(--sub); font-size:12px; margin:0 0 8px; line-height:1.6}
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px}
+.wbtn{border:1px solid var(--line); background:#fff; border-radius:9px;
+      padding:11px 12px; text-align:left; line-height:1.4; min-height:62px}
+.wbtn:active{background:#F7F2E3}
+.wbtn .n{font-size:15px; font-weight:700; display:block; word-break:break-all}
+.wbtn .i{font-size:11px; color:var(--sub)}
+.wbtn.rest{background:#FBF4E4; border-color:#E9DCB9}
+.wbtn.on{background:#EAF1F8; border-color:var(--navy); box-shadow:inset 0 0 0 1px var(--navy)}
+
+/* ---- 一覧（カード行） ---- */
+.rows{padding:10px 12px 0; display:flex; flex-direction:column; gap:7px}
+.row{background:#fff; border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+     display:block; width:100%; text-align:left}
+.row.run{background:#EAF1F8; border-color:var(--navy)}
+.row.rest{background:#FDFBF4}
+.row .l1{display:flex; align-items:baseline; gap:8px}
+.row .tm{font-size:12.5px; color:var(--sub); font-variant-numeric:tabular-nums; white-space:nowrap}
+.row .du{margin-left:auto; font-size:15px; font-weight:700; font-variant-numeric:tabular-nums}
+.row .nm{font-size:15px; font-weight:700; margin-top:3px; word-break:break-all}
+.row .mt{font-size:12px; color:var(--sub); margin-top:2px; line-height:1.5; word-break:break-all}
+.row .ck{float:right; width:22px; height:22px; margin-left:8px}
+.empty{padding:28px 12px; text-align:center; color:var(--sub); font-size:13px}
+.gap{background:#FBF4E4; border:1px solid #E9DCB9; color:var(--warn);
+     border-radius:8px; padding:9px 12px; margin:10px 12px 0; font-size:12.5px; line-height:1.7}
+.sum-head{margin:16px 12px 6px; font-size:13px; font-weight:700; color:var(--navy)}
+.sum-tot{display:flex; gap:8px; flex-wrap:wrap; margin:12px 12px 0}
+.sum-card{background:#fff; border:1px solid var(--line); border-radius:9px;
+          padding:9px 14px; flex:1; min-width:100px}
+.sum-card .k{font-size:11px; color:var(--sub)}
+.sum-card .v{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums}
+.sum-card.rest .v{color:var(--warn)}
+table.t{border-collapse:separate; border-spacing:0; width:calc(100% - 24px); margin:0 12px;
+        background:#fff; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+table.t th{background:#EFE8D6; color:var(--sub); font-weight:600; font-size:11.5px;
+   text-align:left; padding:7px 9px; border-bottom:1px solid var(--line)}
+table.t td{padding:8px 9px; border-bottom:1px solid var(--line2); font-size:13.5px;
+   word-break:break-all}
+table.t tr:last-child td{border-bottom:0}
+.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap}
+
+/* ---- ダイアログ ---- */
+.mask{position:fixed; inset:0; background:rgba(36,31,20,.45); display:none;
+      align-items:flex-end; justify-content:center; z-index:50}
+.mask.on{display:flex}
+.dlg{background:var(--panel); border-top:1px solid var(--line);
+     border-radius:14px 14px 0 0; width:100%; max-width:560px;
+     max-height:92%; display:flex; flex-direction:column;
+     padding-bottom:var(--safe-b)}
+.dlg h2{margin:0; padding:13px 16px; font-size:15px; color:var(--navy);
+        border-bottom:1px solid var(--line2); display:flex; align-items:center}
+.dlg h2 .x{margin-left:auto; width:30px; height:30px; padding:0; border:1px solid var(--line);
+  border-radius:7px; background:transparent; color:var(--sub); font-size:17px; line-height:1}
+.dlg .body{padding:13px 16px; overflow:auto; -webkit-overflow-scrolling:touch}
+.dlg .foot{padding:11px 16px; border-top:1px solid var(--line2);
+           display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap}
+.form{display:grid; grid-template-columns:1fr; gap:11px}
+.form label.k{color:var(--sub); font-size:12px; display:block; margin-bottom:4px}
+.form input,.form select,.form textarea{
+  width:100%; border:1px solid var(--line); border-radius:7px; padding:9px 10px;
+  background:#fff; min-height:42px}
+.form textarea{resize:vertical; min-height:64px; font-family:inherit}
+.hint{color:var(--sub); font-size:11.5px; margin-top:4px; line-height:1.6}
+.two2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.msg{padding:8px 11px; border-radius:7px; font-size:12.5px; margin:0 0 9px; line-height:1.6}
+.msg.error{background:#FBEFEF; color:var(--err); border:1px solid #E7CACA}
+.msg.warn{background:#FBF4E4; color:var(--warn); border:1px solid #E9DCB9}
+.msg.ok{background:#EDF4EF; color:var(--ok); border:1px solid #CBE0D1}
+.sec{margin:0 0 8px; font-size:13px; font-weight:700; color:var(--navy);
+     padding-top:14px; border-top:1px solid var(--line2)}
+.sec:first-child{padding-top:0; border-top:0}
+.stack{display:flex; flex-direction:column; gap:8px}
+.kv{font-size:12.5px; color:var(--sub); line-height:1.8; word-break:break-all}
+.kv b{color:var(--ink)}
+
+/* ---- お知らせ ---- */
+#toast{position:fixed; left:50%; bottom:calc(70px + var(--safe-b));
+  transform:translateX(-50%) translateY(12px);
+  background:#241F14; color:#fff; padding:10px 18px; border-radius:22px; font-size:13px;
+  opacity:0; pointer-events:none; transition:.18s; z-index:60; max-width:86vw; text-align:center;
+  line-height:1.6}
+#toast.on{opacity:.95; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">作業時間管理<span class="ver" id="ver"></span></div>
+  <div class="chips">
+    <span class="chip">作業<b id="chipWork">0:00</b></span>
+    <span class="chip rest">休憩<b id="chipRest">0:00</b></span>
+    <button class="btn q" id="bCfg" title="設定">⚙</button>
+  </div>
+</header>
+
+<main>
+<!-- ======================= 打刻 ======================= -->
+<div class="page on" id="pg-punch">
+  <div class="now idle" id="nowCard">
+    <div class="now-work" id="nowWork">何もしていません</div>
+    <div class="now-target" id="nowTarget"></div>
+    <div class="now-elapsed" id="nowElapsed">－</div>
+    <div class="now-sub" id="nowSub">下の作業を押すと、そこから時間を数えはじめます。</div>
+    <div class="now-acts" id="nowActs">
+      <label class="f">進捗</label>
+      <input type="number" id="nowProgress" min="0" max="100" step="5" value="0" inputmode="numeric">
+      <span class="f">%</span>
+      <button class="btn sm" id="bProgress">反映</button>
+      <button class="btn danger sm" id="bStop">終了する</button>
+    </div>
+    <div class="now-acts">
+      <input type="text" id="nowNote" placeholder="ひとこと（あとで記録に出ます）">
+    </div>
+  </div>
+
+  <div class="bar">
+    <label class="f">ターゲット</label>
+    <select id="pkTarget"><option value="">（未選択）</option></select>
+  </div>
+  <div class="bar">
+    <input type="text" id="pkFind" placeholder="作業名で絞り込む">
+    <button class="btn sm" id="bAddWork">＋作業</button>
+  </div>
+
+  <div class="picker">
+    <p class="pick-head">作業を押すと、いまの作業が終わって切り替わります。</p>
+    <div class="grid" id="workGrid"></div>
+  </div>
+</div>
+
+<!-- ======================= 記録 ======================= -->
+<div class="page" id="pg-log">
+  <div class="bar">
+    <button class="btn sm" id="dPrev">◀</button>
+    <input type="date" id="dDate" style="flex:1">
+    <button class="btn sm" id="dNext">▶</button>
+    <button class="btn sm" id="dToday">今日</button>
+  </div>
+  <div class="bar">
+    <span class="f" id="dTotal"></span>
+    <span class="sp"></span>
+    <button class="btn sm" id="bAddRow">＋記録</button>
+    <button class="btn sm danger" id="bDelRow">選んだ行を消す</button>
+  </div>
+  <div id="gapBox"></div>
+  <div class="rows" id="logBody"></div>
+</div>
+
+<!-- ======================= 集計 ======================= -->
+<div class="page" id="pg-sum">
+  <div class="bar">
+    <input type="date" id="sFrom" style="flex:1"><span class="f">〜</span>
+    <input type="date" id="sTo" style="flex:1">
+  </div>
+  <div class="bar">
+    <button class="btn sm" data-preset="today">今日</button>
+    <button class="btn sm" data-preset="week">今週</button>
+    <button class="btn sm" data-preset="month">今月</button>
+    <span class="sp"></span>
+    <button class="btn primary sm" id="bSum">集計する</button>
+  </div>
+  <div class="sum-tot" id="sumTot"></div>
+  <div class="sum-head">作業別</div>
+  <table class="t"><thead><tr><th>作業名称</th><th class="num" style="width:74px">時間</th>
+    <th class="num" style="width:62px">割合</th></tr></thead><tbody id="sumWork"></tbody></table>
+  <div class="sum-head">ターゲット別</div>
+  <table class="t"><thead><tr><th>ターゲット名称</th><th class="num" style="width:74px">時間</th>
+    <th class="num" style="width:62px">割合</th></tr></thead><tbody id="sumTarget"></tbody></table>
+  <div class="sum-head">日別</div>
+  <table class="t"><thead><tr><th>日</th><th class="num" style="width:74px">時間</th></tr></thead>
+    <tbody id="sumDay"></tbody></table>
+  <div class="bar" style="margin-top:14px; border-bottom:0">
+    <button class="btn sm" id="bCsvEntries">記録をCSVへ</button>
+    <button class="btn sm" id="bCsvSummary">集計をCSVへ</button>
+  </div>
+</div>
+
+<!-- ======================= マスタ ======================= -->
+<div class="page" id="pg-mst">
+  <div class="bar">
+    <span class="f" style="flex:1">打刻に出す一覧です。使わなくなったものを「使わない」にすると、打刻の画面から消えます（過去の記録は残ります）。</span>
+  </div>
+  <div class="bar">
+    <button class="btn sm" id="mAddWork">＋作業</button>
+    <button class="btn sm" id="mAddTarget">＋ターゲット</button>
+  </div>
+  <div class="sum-head">作業（何をしたか）</div>
+  <table class="t"><thead><tr><th style="width:50px">ID</th><th>作業名称</th>
+    <th style="width:52px">区分</th><th style="width:52px">使う</th></tr></thead>
+    <tbody id="mstWork"></tbody></table>
+  <div class="sum-head">ターゲット（案件・システム）</div>
+  <table class="t"><thead><tr><th style="width:50px">ID</th><th>ターゲット名称</th>
+    <th style="width:52px">使う</th></tr></thead>
+    <tbody id="mstTarget"></tbody></table>
+</div>
+</main>
+
+<nav class="tabs" id="tabs">
+  <button data-page="punch" class="on"><span class="ic">⏱</span>打刻</button>
+  <button data-page="log"><span class="ic">📋</span>記録</button>
+  <button data-page="sum"><span class="ic">📊</span>集計</button>
+  <button data-page="mst"><span class="ic">🗂</span>マスタ</button>
+</nav>
+
+<!-- ======================= ダイアログ ======================= -->
+<div class="mask" id="mDlg"><div class="dlg">
+  <h2><span id="dlgTitle">　</span><button class="x" data-close>✕</button></h2>
+  <div class="body" id="dlgBody"></div>
+  <div class="foot" id="dlgFoot"></div>
+</div></div>
+
+<div id="toast"></div>
+<input type="file" id="filePick" accept=".json,.csv,text/csv,application/json" style="display:none">
+
+<script>
+"use strict";
+const APP_VERSION = "1.0.1";
+const DB_NAME = "work_time", DB_VER = 1;
+const SEED_WORKS = [
+  ["W001","席外し","休憩"],["W002","バスルーム","休憩"],["W003","保守作業","作業"],
+  ["W004","GEaRミーティング","作業"],["W005","ツールミーティング","作業"],
+  ["W006","SMILeRPA","作業"],["W007","リファクタリング","作業"],["W008","ツール開発","作業"],
+  ["W009","昼休憩","休憩"],["W010","コーディング","作業"],["W011","ドキュメント","作業"],
+  ["W012","単体テスト","作業"],["W013","結合テスト１","作業"],["W014","結合テスト２","作業"],
+  ["W015","システムテスト","作業"],["W016","移行テスト","作業"],["W017","運用テスト","作業"],
+  ["W018","構想","作業"],["W019","依頼","作業"],["W020","調査","作業"],["W021","検討","作業"]
+];
+const DEF_CFG = { day_start:"05:00", round_minutes:0, warn_hours:12 };
+
+/* ---------------- 小さな道具 ---------------- */
+const $ = (id) => document.getElementById(id);
+const pad2 = (n) => (n < 10 ? "0" + n : "" + n);
+function fmtDT(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+
+  pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds()); }
+function fmtD(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+function fmtHM(d){ return pad2(d.getHours())+":"+pad2(d.getMinutes()); }
+function parseDT(s){
+  if(!s) return null;
+  const m = String(s).trim().replace("T"," ")
+      .match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ ]+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if(!m) return null;
+  return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0), 0);
+}
+function parseD(s){
+  const m = String(s||"").trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  return m ? new Date(+m[1], +m[2]-1, +m[3]) : null;
+}
+function hhmm(minutes){
+  let m = Math.round(minutes||0); const sign = m<0 ? "-" : ""; m = Math.abs(m);
+  return sign + Math.floor(m/60) + ":" + pad2(m%60);
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function nowDT(){ const d = new Date(); d.setMilliseconds(0); return d; }
+
+let CFG = Object.assign({}, DEF_CFG);
+function dayStartParts(){
+  const m = String(CFG.day_start||"05:00").match(/^(\d{1,2}):(\d{2})/);
+  return m ? [+m[1], +m[2]] : [5, 0];
+}
+function businessDate(d){
+  d = d || nowDT();
+  const [h, mi] = dayStartParts();
+  const x = new Date(d.getTime());
+  if(d.getHours()*60 + d.getMinutes() < h*60 + mi) x.setDate(x.getDate()-1);
+  return fmtD(x);
+}
+function dayRange(dateStr){
+  const d = parseD(dateStr); const [h, mi] = dayStartParts();
+  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, mi, 0, 0);
+  const b = new Date(a.getTime()); b.setDate(b.getDate()+1);
+  return [a, b];
+}
+function roundDT(d){
+  const n = parseInt(CFG.round_minutes||0, 10);
+  if(!n || n <= 0 || !d) return d;
+  const total = d.getHours()*60 + d.getMinutes();
+  const r = Math.round(total/n)*n;
+  const base = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  return new Date(base.getTime() + r*60000);
+}
+
+let toastTimer = null;
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+/* ---------------- IndexedDB ---------------- */
+let db = null;
+function openDB(){
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open(DB_NAME, DB_VER);
+    rq.onupgradeneeded = (ev) => {
+      const d = rq.result;
+      if(!d.objectStoreNames.contains("entries")){
+        const s = d.createObjectStore("entries", {keyPath:"id", autoIncrement:true});
+        s.createIndex("start_at", "start_at");
+      }
+      if(!d.objectStoreNames.contains("works")) d.createObjectStore("works", {keyPath:"work_id"});
+      if(!d.objectStoreNames.contains("targets")) d.createObjectStore("targets", {keyPath:"target_id"});
+      if(!d.objectStoreNames.contains("meta")) d.createObjectStore("meta", {keyPath:"k"});
+      ev.target.transaction.oncomplete = () => {};
+    };
+    rq.onsuccess = () => { db = rq.result; res(db); };
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function tx(stores, mode){ return db.transaction(stores, mode||"readonly"); }
+function pr(rq){ return new Promise((res, rej) => {
+  rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error); }); }
+function getAll(store){ return pr(tx([store]).objectStore(store).getAll()); }
+function putRec(store, rec){
+  const t = tx([store], "readwrite");
+  return pr(t.objectStore(store).put(rec));
+}
+function putMany(store, recs){
+  return new Promise((res, rej) => {
+    const t = tx([store], "readwrite"); const s = t.objectStore(store);
+    recs.forEach(r => s.put(r));
+    t.oncomplete = () => res(true); t.onerror = () => rej(t.error);
+  });
+}
+function delRec(store, key){
+  const t = tx([store], "readwrite");
+  return pr(t.objectStore(store).delete(key));
+}
+function clearStore(store){
+  const t = tx([store], "readwrite");
+  return pr(t.objectStore(store).clear());
+}
+
+/* ---------------- 状態 ---------------- */
+let WORKS = [], TARGETS = [], CUR = null;
+let logDate = "", logRows = [], logChecked = {};
+let sumData = null;
+
+function workById(id){ return WORKS.find(w => w.work_id === id) || null; }
+function kindOf(workId){ const w = workById(workId); return (w && w.kind) || "作業"; }
+function sortWorks(a, b){
+  if((b.enabled?1:0) !== (a.enabled?1:0)) return (b.enabled?1:0) - (a.enabled?1:0);
+  if((a.sort_no||0) !== (b.sort_no||0)) return (a.sort_no||0) - (b.sort_no||0);
+  return String(a.work_id||a.target_id).localeCompare(String(b.work_id||b.target_id));
+}
+function nextId(list, key, prefix){
+  let mx = 0;
+  list.forEach(r => { const v = String(r[key]||"").toUpperCase();
+    if(v.startsWith(prefix) && /^\d+$/.test(v.slice(prefix.length)))
+      mx = Math.max(mx, parseInt(v.slice(prefix.length), 10)); });
+  return prefix + pad3(mx+1);
+}
+function pad3(n){ return ("00" + n).slice(-3); }
+
+async function loadMasters(){
+  WORKS = (await getAll("works")).sort(sortWorks);
+  TARGETS = (await getAll("targets")).sort(sortWorks);
+}
+async function loadCfg(){
+  const rec = await pr(tx(["meta"]).objectStore("meta").get("cfg"));
+  CFG = Object.assign({}, DEF_CFG, (rec && rec.v) || {});
+}
+async function saveCfg(){ await putRec("meta", {k:"cfg", v:CFG}); }
+
+async function entriesBetween(a, b){
+  const rows = await new Promise((res, rej) => {
+    const out = [];
+    const rq = tx(["entries"]).objectStore("entries").index("start_at")
+        .openCursor(IDBKeyRange.bound(fmtDT(a), fmtDT(b), false, true));
+    rq.onsuccess = () => { const c = rq.result;
+      if(c){ out.push(c.value); c.continue(); } else res(out); };
+    rq.onerror = () => rej(rq.error);
+  });
+  rows.sort((x, y) => x.start_at < y.start_at ? -1 : x.start_at > y.start_at ? 1 : x.id - y.id);
+  return rows.map(decorate);
+}
+function decorate(r){
+  const d = Object.assign({}, r);
+  const st = parseDT(d.start_at), en = d.end_at ? parseDT(d.end_at) : null;
+  const mins = st ? ((en || nowDT()) - st) / 60000 : 0;
+  d.minutes = Math.round(mins);
+  d.duration = hhmm(mins);
+  d.running = !d.end_at;
+  d.start_hm = st ? fmtHM(st) : "";
+  d.end_hm = en ? fmtHM(en) : "";
+  d.date = st ? businessDate(st) : "";
+  return d;
+}
+async function findCurrent(){
+  const all = await getAll("entries");
+  const run = all.filter(r => !r.end_at)
+      .sort((x, y) => x.start_at < y.start_at ? 1 : x.start_at > y.start_at ? -1 : y.id - x.id);
+  if(!run.length) return null;
+  const d = decorate(run[0]);
+  d.warn = d.minutes >= parseInt(CFG.warn_hours||12, 10) * 60;
+  return d;
+}
+
+/* ---------------- 打刻 ---------------- */
+async function switchTo(workId){
+  const w = workById(workId);
+  if(!w){ toast("その作業は一覧にありません"); return; }
+  const targetId = $("pkTarget").value || "";
+  const t = TARGETS.find(x => x.target_id === targetId);
+  const note = ($("nowNote").value || "").trim();
+  const at = roundDT(nowDT());
+  const cur = await findCurrent();
+  if(cur && cur.work_id === workId && (cur.target_id||"") === targetId){
+    toast("すでにその作業をしています（何もしませんでした）"); return;
+  }
+  let closed = "";
+  if(cur){
+    const st = parseDT(cur.start_at);
+    const end = at > st ? at : new Date(st.getTime() + 60000);
+    const rec = await pr(tx(["entries"]).objectStore("entries").get(cur.id));
+    rec.end_at = fmtDT(end); rec.updated_at = fmtDT(nowDT());
+    await putRec("entries", rec);
+    closed = "「" + cur.work_name + "」を " + fmtHM(end) + " で終えました（" +
+             hhmm((end - st)/60000) + "） / ";
+  }
+  const now = fmtDT(nowDT());
+  await putRec("entries", {
+    start_at: fmtDT(at), end_at: null, work_id: workId, work_name: w.name,
+    target_id: targetId, target_name: t ? t.name : "", progress: 0,
+    note: note, created_at: now, updated_at: now
+  });
+  $("nowNote").value = "";
+  toast(closed + "「" + w.name + "」を " + fmtHM(at) + " から始めました");
+  await refreshPunch(); await refreshChips();
+  if($("pg-log").classList.contains("on")) await renderLog();
+}
+async function stopCurrent(){
+  const cur = await findCurrent();
+  if(!cur){ toast("いま動いている作業はありません"); return; }
+  const at = roundDT(nowDT()); const st = parseDT(cur.start_at);
+  const end = at > st ? at : new Date(st.getTime() + 60000);
+  const rec = await pr(tx(["entries"]).objectStore("entries").get(cur.id));
+  rec.end_at = fmtDT(end); rec.updated_at = fmtDT(nowDT());
+  await putRec("entries", rec);
+  toast("「" + cur.work_name + "」を " + fmtHM(end) + " で終えました（" +
+        hhmm((end - st)/60000) + "）");
+  await refreshPunch(); await refreshChips();
+  if($("pg-log").classList.contains("on")) await renderLog();
+}
+async function setProgress(){
+  const cur = await findCurrent();
+  if(!cur){ toast("いま動いている作業はありません"); return; }
+  const p = Math.max(0, Math.min(100, parseInt($("nowProgress").value||0, 10) || 0));
+  const rec = await pr(tx(["entries"]).objectStore("entries").get(cur.id));
+  rec.progress = p; rec.note = ($("nowNote").value||"").trim();
+  rec.updated_at = fmtDT(nowDT());
+  await putRec("entries", rec);
+  toast("進捗度を " + p + "% にしました");
+  await refreshPunch();
+}
+
+let noteDirty = false, progDirty = false;
+async function refreshPunch(){
+  CUR = await findCurrent();
+  const card = $("nowCard");
+  card.className = "now" + (CUR ? (CUR.warn ? " warn" : "") : " idle");
+  $("nowWork").textContent = CUR ? CUR.work_name : "何もしていません";
+  $("nowTarget").textContent = CUR && CUR.target_name ? "ターゲット：" + CUR.target_name : "";
+  $("nowElapsed").textContent = CUR ? CUR.duration : "－";
+  $("nowSub").textContent = CUR
+    ? (CUR.start_hm + " から" + (CUR.warn ? "　※長すぎます。打ち忘れかもしれません" : ""))
+    : "下の作業を押すと、そこから時間を数えはじめます。";
+  if(!progDirty) $("nowProgress").value = CUR ? (CUR.progress||0) : 0;
+  if(!noteDirty) $("nowNote").value = CUR ? (CUR.note||"") : "";
+  $("bStop").disabled = !CUR; $("bProgress").disabled = !CUR;
+  // いまの作業のターゲットを引き継ぐ（続けて打刻するとき選び直さなくてよい）
+  if(CUR && CUR.target_id && !$("pkTarget").value) $("pkTarget").value = CUR.target_id;
+  renderWorkGrid();
+}
+function renderWorkGrid(){
+  const q = ($("pkFind").value||"").trim();
+  const g = $("workGrid"); g.innerHTML = "";
+  const list = WORKS.filter(w => w.enabled && (!q || w.name.indexOf(q) >= 0));
+  if(!list.length){ g.innerHTML = '<div class="empty">作業がありません。［＋作業］で足してください。</div>'; return; }
+  list.forEach(w => {
+    const b = document.createElement("button");
+    b.className = "wbtn" + (w.kind === "休憩" ? " rest" : "") +
+                  (CUR && CUR.work_id === w.work_id ? " on" : "");
+    b.innerHTML = '<span class="n">' + esc(w.name) + '</span>' +
+                  '<span class="i">' + esc(w.kind) + '　' + esc(w.work_id) + '</span>';
+    b.onclick = () => switchTo(w.work_id);
+    g.appendChild(b);
+  });
+}
+function renderTargetSelect(){
+  const s = $("pkTarget"); const keep = s.value;
+  s.innerHTML = '<option value="">（未選択）</option>';
+  TARGETS.filter(t => t.enabled).forEach(t => {
+    const o = document.createElement("option");
+    o.value = t.target_id; o.textContent = t.name;
+    s.appendChild(o);
+  });
+  s.value = keep;
+  if(s.value !== keep) s.value = "";
+}
+async function refreshChips(){
+  const [a, b] = dayRange(businessDate());
+  const rows = await entriesBetween(a, b);
+  let w = 0, r = 0;
+  rows.forEach(x => { if(kindOf(x.work_id) === "休憩") r += x.minutes; else w += x.minutes; });
+  $("chipWork").textContent = hhmm(w);
+  $("chipRest").textContent = hhmm(r);
+}
+
+/* ---------------- 記録 ---------------- */
+function gapsOf(rows){
+  const out = []; let prevEnd = null;
+  for(const r of rows){
+    const st = parseDT(r.start_at);
+    if(prevEnd && st > prevEnd){
+      const m = (st - prevEnd)/60000;
+      if(m >= 5) out.push({from: fmtHM(prevEnd), to: fmtHM(st), duration: hhmm(m)});
+    }
+    const en = r.end_at ? parseDT(r.end_at) : null;
+    if(en && (prevEnd === null || en > prevEnd)) prevEnd = en;
+    else if(!en){ prevEnd = null; break; }
+  }
+  return out;
+}
+async function renderLog(){
+  if(!logDate) logDate = businessDate();
+  $("dDate").value = logDate;
+  const [a, b] = dayRange(logDate);
+  logRows = await entriesBetween(a, b);
+  let w = 0, r = 0;
+  logRows.forEach(x => { if(kindOf(x.work_id) === "休憩") r += x.minutes; else w += x.minutes; });
+  $("dTotal").textContent = "作業 " + hhmm(w) + " ／ 休憩 " + hhmm(r) +
+                            "　（" + logRows.length + " 件）";
+  const gb = $("gapBox"); const gaps = gapsOf(logRows);
+  gb.innerHTML = gaps.length
+    ? '<div class="gap">打ち忘れかもしれません：' +
+      gaps.map(g => g.from + "〜" + g.to + "（" + g.duration + "）").join("、") + "</div>"
+    : "";
+  const body = $("logBody"); body.innerHTML = "";
+  if(!logRows.length){
+    body.innerHTML = '<div class="empty">この日の記録はありません。</div>'; return;
+  }
+  logRows.forEach(r => {
+    const rest = kindOf(r.work_id) === "休憩";
+    const el = document.createElement("div");
+    el.className = "row" + (r.running ? " run" : "") + (rest ? " rest" : "");
+    el.innerHTML =
+      '<input type="checkbox" class="ck" data-id="' + r.id + '"' +
+        (logChecked[r.id] ? " checked" : "") + '>' +
+      '<div class="l1"><span class="tm">' + esc(r.start_hm) + " 〜 " +
+        esc(r.end_hm || "（実行中）") + '</span>' +
+        '<span class="du">' + esc(r.duration) + '</span></div>' +
+      '<div class="nm">' + esc(r.work_name) + '</div>' +
+      '<div class="mt">' + esc(r.work_id) +
+        (r.target_name ? "／" + esc(r.target_name) : "") +
+        (r.progress ? "　進捗 " + r.progress + "%" : "") +
+        (r.note ? "<br>" + esc(r.note) : "") + '</div>';
+    el.querySelector(".ck").onclick = (ev) => {
+      ev.stopPropagation(); logChecked[r.id] = ev.target.checked;
+    };
+    el.onclick = () => openEntryDlg(r);
+    body.appendChild(el);
+  });
+}
+
+/* ---------------- 集計 ---------------- */
+async function doSummary(){
+  let f = $("sFrom").value, t = $("sTo").value;
+  if(!f) f = businessDate(); if(!t) t = f;
+  if(t < f){ const x = f; f = t; t = x; $("sFrom").value = f; $("sTo").value = t; }
+  const [a] = dayRange(f); const [, b] = dayRange(t);
+  const rows = await entriesBetween(a, b);
+  const acc = (kid, kname) => {
+    const m = {};
+    rows.forEach(r => {
+      const k = (r[kid]||"") + "\u0001" + (r[kname] || "（未設定）");
+      m[k] = (m[k]||0) + r.minutes;
+    });
+    return Object.keys(m).map(k => ({id: k.split("\u0001")[0], name: k.split("\u0001")[1],
+      minutes: m[k], duration: hhmm(m[k])})).sort((x, y) => y.minutes - x.minutes);
+  };
+  let work = 0, rest = 0;
+  rows.forEach(r => { if(kindOf(r.work_id) === "休憩") rest += r.minutes; else work += r.minutes; });
+  const total = work + rest;
+  const byDay = {};
+  rows.forEach(r => { byDay[r.date] = (byDay[r.date]||0) + r.minutes; });
+  const byW = acc("work_id", "work_name"), byT = acc("target_id", "target_name");
+  [byW, byT].forEach(l => l.forEach(x => {
+    x.pct = total ? Math.round(x.minutes*1000/total)/10 : 0; }));
+  byW.forEach(x => x.kind = kindOf(x.id));
+  sumData = {from: f, to: t, count: rows.length, work, rest, total,
+    by_work: byW, by_target: byT,
+    by_day: Object.keys(byDay).sort().map(d => ({date: d, minutes: byDay[d], duration: hhmm(byDay[d])})),
+    rows: rows};
+  renderSummary();
+}
+function renderSummary(){
+  const s = sumData; if(!s) return;
+  $("sumTot").innerHTML =
+    '<div class="sum-card"><div class="k">作業</div><div class="v">' + hhmm(s.work) + '</div></div>' +
+    '<div class="sum-card rest"><div class="k">休憩</div><div class="v">' + hhmm(s.rest) + '</div></div>' +
+    '<div class="sum-card"><div class="k">合計</div><div class="v">' + hhmm(s.total) + '</div></div>';
+  const fill = (tb, list, withPct) => {
+    const el = $(tb); el.innerHTML = "";
+    if(!list.length){ el.innerHTML = '<tr><td colspan="3" style="color:var(--sub)">ありません</td></tr>'; return; }
+    list.forEach(x => {
+      const tr = document.createElement("tr");
+      const showId = x.id && x.name && x.name !== "（未設定）";
+      tr.innerHTML = '<td>' + esc(x.name || x.date) +
+        (showId ? ' <span style="color:var(--sub);font-size:11px">' + esc(x.id) + '</span>' : "") + '</td>' +
+        '<td class="num">' + esc(x.duration) + '</td>' +
+        (withPct ? '<td class="num">' + x.pct + '%</td>' : "");
+      el.appendChild(tr);
+    });
+  };
+  fill("sumWork", s.by_work, true);
+  fill("sumTarget", s.by_target, true);
+  fill("sumDay", s.by_day, false);
+}
+
+/* ---------------- マスタ ---------------- */
+function renderMasters(){
+  const wb = $("mstWork"); wb.innerHTML = "";
+  WORKS.forEach(w => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td style="color:var(--sub);font-size:12px">' + esc(w.work_id) + '</td>' +
+      '<td>' + esc(w.name) + '</td><td>' + esc(w.kind) + '</td>' +
+      '<td>' + (w.enabled ? "○" : "－") + '</td>';
+    tr.onclick = () => openWorkDlg(w);
+    wb.appendChild(tr);
+  });
+  const tb = $("mstTarget"); tb.innerHTML = "";
+  if(!TARGETS.length){
+    tb.innerHTML = '<tr><td colspan="3" style="color:var(--sub)">' +
+      'ターゲットはまだありません。［＋ターゲット］で案件・システムを足してください。</td></tr>';
+  }
+  TARGETS.forEach(t => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td style="color:var(--sub);font-size:12px">' + esc(t.target_id) + '</td>' +
+      '<td>' + esc(t.name) + '</td><td>' + (t.enabled ? "○" : "－") + '</td>';
+    tr.onclick = () => openTargetDlg(t);
+    tb.appendChild(tr);
+  });
+  renderTargetSelect();
+}
+
+/* ---------------- ダイアログの土台 ---------------- */
+function dlg(title, bodyHTML, buttons){
+  $("dlgTitle").textContent = title;
+  $("dlgBody").innerHTML = bodyHTML;
+  const f = $("dlgFoot"); f.innerHTML = "";
+  (buttons||[]).forEach(b => {
+    const el = document.createElement("button");
+    el.className = "btn" + (b.kind ? " " + b.kind : "");
+    el.textContent = b.label;
+    el.onclick = b.on;
+    f.appendChild(el);
+  });
+  $("mDlg").classList.add("on");
+}
+function closeDlg(){ $("mDlg").classList.remove("on"); }
+
+/* ---------------- 記録の編集 ---------------- */
+function optWorks(sel){
+  return WORKS.map(w => '<option value="' + esc(w.work_id) + '"' +
+    (w.work_id === sel ? " selected" : "") + '>' + esc(w.name) + '（' + esc(w.work_id) + '）</option>').join("");
+}
+function optTargets(sel){
+  return '<option value="">（未設定）</option>' + TARGETS.map(t =>
+    '<option value="' + esc(t.target_id) + '"' + (t.target_id === sel ? " selected" : "") +
+    '>' + esc(t.name) + '</option>').join("");
+}
+function openEntryDlg(r){
+  const isNew = !r;
+  const base = r || {start_at: fmtDT(roundDT(nowDT())), end_at: "", work_id: (WORKS[0]||{}).work_id||"",
+                     target_id: "", progress: 0, note: ""};
+  dlg(isNew ? "記録を足す" : "記録を直す",
+    '<div class="form">' +
+    '<div><label class="k">開始日時</label><input id="eStart" type="text" inputmode="numeric" value="' +
+      esc(base.start_at) + '"><div class="hint">例 ' + businessDate() + ' 09:30</div></div>' +
+    '<div><label class="k">終了日時（空なら実行中）</label><input id="eEnd" type="text" value="' +
+      esc(base.end_at||"") + '"></div>' +
+    '<div><label class="k">作業名称</label><select id="eWork">' + optWorks(base.work_id) + '</select></div>' +
+    '<div><label class="k">ターゲット</label><select id="eTarget">' + optTargets(base.target_id) + '</select></div>' +
+    '<div class="two2"><div><label class="k">進捗度(%)</label>' +
+      '<input id="eProg" type="number" min="0" max="100" step="5" value="' + (base.progress||0) + '"></div></div>' +
+    '<div><label class="k">メモ</label><textarea id="eNote">' + esc(base.note||"") + '</textarea></div>' +
+    '</div>',
+    [ !isNew ? {label:"消す", kind:"danger", on: async () => {
+        await delRec("entries", r.id); delete logChecked[r.id];
+        closeDlg(); toast("消しました"); await renderLog(); await refreshPunch(); await refreshChips();
+      }} : null,
+      {label:"やめる", on: closeDlg},
+      {label:"保存", kind:"primary", on: async () => { await saveEntry(isNew ? null : r.id); }}
+    ].filter(Boolean));
+}
+async function saveEntry(id){
+  const st = parseDT($("eStart").value);
+  if(!st){ toast("開始日時の書き方が違います（例 2026-09-01 09:30）"); return; }
+  const endStr = ($("eEnd").value||"").trim();
+  const en = endStr ? parseDT(endStr) : null;
+  if(endStr && !en){ toast("終了日時の書き方が違います"); return; }
+  if(en && en <= st){ toast("終了日時は開始日時より後にしてください"); return; }
+  const wid = $("eWork").value; const w = workById(wid);
+  if(!w){ toast("作業を選んでください"); return; }
+  const tid = $("eTarget").value || "";
+  const t = TARGETS.find(x => x.target_id === tid);
+  const p = Math.max(0, Math.min(100, parseInt($("eProg").value||0, 10) || 0));
+  const note = ($("eNote").value||"").trim();
+  if(en === null){
+    const all = await getAll("entries");
+    for(const r of all){
+      if(!r.end_at && r.id !== id){
+        const rst = parseDT(r.start_at);
+        r.end_at = fmtDT(new Date(rst.getTime() + 60000)); r.updated_at = fmtDT(nowDT());
+        await putRec("entries", r);
+      }
+    }
+  }
+  const now = fmtDT(nowDT());
+  let rec;
+  if(id){
+    rec = await pr(tx(["entries"]).objectStore("entries").get(id));
+  } else {
+    rec = {created_at: now};
+  }
+  Object.assign(rec, {start_at: fmtDT(st), end_at: en ? fmtDT(en) : null,
+    work_id: wid, work_name: w.name, target_id: tid, target_name: t ? t.name : "",
+    progress: p, note: note, updated_at: now});
+  await putRec("entries", rec);
+  closeDlg(); toast(id ? "直しました" : "足しました");
+  logDate = businessDate(st);
+  await renderLog(); await refreshPunch(); await refreshChips();
+}
+
+/* ---------------- マスタの編集 ---------------- */
+function openWorkDlg(w){
+  const isNew = !w;
+  const b = w || {work_id:"", name:"", kind:"作業", sort_no:999, enabled:1};
+  dlg(isNew ? "作業を足す" : "作業を直す",
+    '<div class="form">' +
+    (isNew ? "" : '<div class="kv">ID：<b>' + esc(b.work_id) + '</b></div>') +
+    '<div><label class="k">作業名称</label><input id="wName" type="text" value="' + esc(b.name) + '"></div>' +
+    '<div class="two2">' +
+    '<div><label class="k">区分</label><select id="wKind">' +
+      '<option value="作業"' + (b.kind === "作業" ? " selected" : "") + '>作業</option>' +
+      '<option value="休憩"' + (b.kind === "休憩" ? " selected" : "") + '>休憩</option></select></div>' +
+    '<div><label class="k">並び</label><input id="wSort" type="number" value="' + (b.sort_no||999) + '"></div>' +
+    '</div>' +
+    '<div><label class="k">打刻の画面に出す</label><select id="wEn">' +
+      '<option value="1"' + (b.enabled ? " selected" : "") + '>出す</option>' +
+      '<option value="0"' + (!b.enabled ? " selected" : "") + '>出さない（使わない）</option></select></div>' +
+    '<div class="hint">「休憩」にしたものは、集計で作業時間から分けて数えます。</div>' +
+    '</div>',
+    [ !isNew ? {label:"消す", kind:"danger", on: async () => {
+        const all = await getAll("entries");
+        const n = all.filter(r => r.work_id === b.work_id).length;
+        if(n){ b.enabled = 0; await putRec("works", b);
+          toast("記録が " + n + " 件あるので、消さずに「使わない」にしました"); }
+        else { await delRec("works", b.work_id); toast("消しました"); }
+        closeDlg(); await loadMasters(); renderMasters(); await refreshPunch();
+      }} : null,
+      {label:"やめる", on: closeDlg},
+      {label:"保存", kind:"primary", on: async () => {
+        const name = ($("wName").value||"").trim();
+        if(!name){ toast("作業名称を入れてください"); return; }
+        const now = fmtDT(nowDT());
+        const rec = isNew
+          ? {work_id: nextId(WORKS, "work_id", "W"), created_at: now}
+          : await pr(tx(["works"]).objectStore("works").get(b.work_id));
+        Object.assign(rec, {name: name, kind: $("wKind").value,
+          sort_no: parseInt($("wSort").value||999, 10) || 999,
+          enabled: $("wEn").value === "1" ? 1 : 0, updated_at: now});
+        await putRec("works", rec);
+        closeDlg(); toast(isNew ? "作業「" + name + "」を " + rec.work_id + " で足しました" : "直しました");
+        await loadMasters(); renderMasters(); await refreshPunch();
+      }}
+    ].filter(Boolean));
+}
+function openTargetDlg(t){
+  const isNew = !t;
+  const b = t || {target_id:"", name:"", sort_no:999, enabled:1};
+  dlg(isNew ? "ターゲットを足す" : "ターゲットを直す",
+    '<div class="form">' +
+    (isNew ? "" : '<div class="kv">ID：<b>' + esc(b.target_id) + '</b></div>') +
+    '<div><label class="k">ターゲット名称（案件・システム）</label>' +
+      '<input id="tName" type="text" value="' + esc(b.name) + '"></div>' +
+    '<div class="two2"><div><label class="k">並び</label>' +
+      '<input id="tSort" type="number" value="' + (b.sort_no||999) + '"></div>' +
+    '<div><label class="k">使う</label><select id="tEn">' +
+      '<option value="1"' + (b.enabled ? " selected" : "") + '>使う</option>' +
+      '<option value="0"' + (!b.enabled ? " selected" : "") + '>使わない</option></select></div></div>' +
+    '</div>',
+    [ !isNew ? {label:"消す", kind:"danger", on: async () => {
+        const all = await getAll("entries");
+        const n = all.filter(r => r.target_id === b.target_id).length;
+        if(n){ b.enabled = 0; await putRec("targets", b);
+          toast("記録が " + n + " 件あるので、消さずに「使わない」にしました"); }
+        else { await delRec("targets", b.target_id); toast("消しました"); }
+        closeDlg(); await loadMasters(); renderMasters();
+      }} : null,
+      {label:"やめる", on: closeDlg},
+      {label:"保存", kind:"primary", on: async () => {
+        const name = ($("tName").value||"").trim();
+        if(!name){ toast("ターゲット名称を入れてください"); return; }
+        const now = fmtDT(nowDT());
+        const rec = isNew
+          ? {target_id: nextId(TARGETS, "target_id", "T"), created_at: now}
+          : await pr(tx(["targets"]).objectStore("targets").get(b.target_id));
+        Object.assign(rec, {name: name, sort_no: parseInt($("tSort").value||999, 10) || 999,
+          enabled: $("tEn").value === "1" ? 1 : 0, updated_at: now});
+        await putRec("targets", rec);
+        closeDlg(); toast(isNew ? "ターゲット「" + name + "」を " + rec.target_id + " で足しました" : "直しました");
+        await loadMasters(); renderMasters();
+      }}
+    ].filter(Boolean));
+}
+
+/* ---------------- CSV・バックアップ ---------------- */
+function csvCell(v){
+  const s = String(v == null ? "" : v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function csvOf(rowsArr){ return rowsArr.map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n"; }
+function download(name, text, mime){
+  const isCsv = !mime || mime === "text/csv";
+  const blob = new Blob([(isCsv ? "\uFEFF" : "") + text],
+                        {type: (mime||"text/csv") + ";charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);
+  toast("書き出しました：" + name);
+}
+function stamp(){ const d = nowDT(); return pad2(d.getHours())+pad2(d.getMinutes())+pad2(d.getSeconds()); }
+
+async function exportEntriesCsv(){
+  if(!sumData) await doSummary();
+  const s = sumData;
+  const out = [["開始日時","終了日時","作業名称","作業ID","ターゲット名称","ターゲットID",
+                "作業時間","作業時間(分)","進捗度","メモ"]];
+  s.rows.forEach(r => out.push([r.start_at, r.end_at||"", r.work_name, r.work_id,
+    r.target_name, r.target_id, r.duration, r.minutes, r.progress, r.note]));
+  download("作業記録_" + s.from.replace(/-/g,"") + "_" + s.to.replace(/-/g,"") + "_" + stamp() + ".csv",
+           csvOf(out));
+}
+async function exportSummaryCsv(){
+  if(!sumData) await doSummary();
+  const s = sumData;
+  const out = [["区分","ID","名称","時間","分","割合(%)"]];
+  s.by_work.forEach(x => out.push(["作業", x.id, x.name, x.duration, x.minutes, x.pct]));
+  s.by_target.forEach(x => out.push(["ターゲット", x.id, x.name, x.duration, x.minutes, x.pct]));
+  s.by_day.forEach(x => out.push(["日別", "", x.date, x.duration, x.minutes, ""]));
+  download("集計_" + s.from.replace(/-/g,"") + "_" + s.to.replace(/-/g,"") + "_" + stamp() + ".csv",
+           csvOf(out));
+}
+async function exportBackup(){
+  const data = {app:"作業時間管理", version: APP_VERSION, saved_at: fmtDT(nowDT()),
+    cfg: CFG, works: await getAll("works"), targets: await getAll("targets"),
+    entries: await getAll("entries")};
+  download("作業時間管理_控え_" + fmtD(nowDT()).replace(/-/g,"") + "_" + stamp() + ".json",
+           JSON.stringify(data, null, 1), "application/json");
+}
+
+function parseCsv(text){
+  if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = []; let row = [], cell = "", q = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(q){
+      if(c === '"'){ if(text[i+1] === '"'){ cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else {
+      if(c === '"') q = true;
+      else if(c === ","){ row.push(cell); cell = ""; }
+      else if(c === "\n"){ row.push(cell); rows.push(row); row = []; cell = ""; }
+      else if(c === "\r"){ /* skip */ }
+      else cell += c;
+    }
+  }
+  if(cell.length || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.length && !(r.length === 1 && r[0] === ""));
+}
+async function importText(name, text, enc){
+  if(/\.json$/i.test(name)){
+    let data; try { data = JSON.parse(text); } catch(e){ toast("JSONとして読めませんでした"); return; }
+    if(!data || !data.entries){ toast("控えのファイルではないようです"); return; }
+    await clearStore("entries"); await clearStore("works"); await clearStore("targets");
+    await putMany("works", data.works||[]); await putMany("targets", data.targets||[]);
+    await putMany("entries", (data.entries||[]).map(r => { const x = Object.assign({}, r); return x; }));
+    if(data.cfg){ CFG = Object.assign({}, DEF_CFG, data.cfg); await saveCfg(); }
+    closeDlg(); await loadMasters(); renderMasters();
+    await refreshPunch(); await refreshChips(); await renderLog();
+    toast("控えから戻しました（記録 " + (data.entries||[]).length + " 件）");
+    return;
+  }
+  // CSV（PC版の「作業記録」CSV と同じ並び）
+  const rows = parseCsv(text);
+  if(rows.length < 2){ toast("中身がありませんでした"); return; }
+  const head = rows[0].map(s => s.trim());
+  const ix = (n) => head.indexOf(n);
+  if(ix("開始日時") < 0 || ix("作業名称") < 0){
+    toast("「作業記録」のCSVではないようです（見出しに 開始日時・作業名称 が要ります）"); return;
+  }
+  const exist = await getAll("entries");
+  const key = (r) => r.start_at + "|" + (r.work_id||"") + "|" + (r.work_name||"");
+  const seen = {}; exist.forEach(r => seen[key(r)] = 1);
+  const add = []; let skip = 0;
+  for(let i = 1; i < rows.length; i++){
+    const c = rows[i];
+    const st = parseDT(c[ix("開始日時")]);
+    if(!st) { skip++; continue; }
+    const en = ix("終了日時") >= 0 ? parseDT(c[ix("終了日時")]) : null;
+    const now = fmtDT(nowDT());
+    const rec = {start_at: fmtDT(st), end_at: en ? fmtDT(en) : null,
+      work_id: ix("作業ID") >= 0 ? (c[ix("作業ID")]||"").trim() : "",
+      work_name: (c[ix("作業名称")]||"").trim(),
+      target_id: ix("ターゲットID") >= 0 ? (c[ix("ターゲットID")]||"").trim() : "",
+      target_name: ix("ターゲット名称") >= 0 ? (c[ix("ターゲット名称")]||"").trim() : "",
+      progress: ix("進捗度") >= 0 ? (parseInt(c[ix("進捗度")]||0, 10)||0) : 0,
+      note: ix("メモ") >= 0 ? (c[ix("メモ")]||"").trim() : "",
+      created_at: now, updated_at: now};
+    if(seen[key(rec)]){ skip++; continue; }
+    seen[key(rec)] = 1; add.push(rec);
+  }
+  if(add.length) await putMany("entries", add);
+  await closeExtraRunning();
+  // CSV に出てくる作業・ターゲットで、手元に無いものを足しておく
+  const newW = [], newT = [];
+  add.forEach(r => {
+    if(r.work_id && !workById(r.work_id) && !newW.find(x => x.work_id === r.work_id))
+      newW.push({work_id: r.work_id, name: r.work_name || r.work_id, kind: "作業",
+                 sort_no: 999, enabled: 1, created_at: fmtDT(nowDT()), updated_at: fmtDT(nowDT())});
+    if(r.target_id && !TARGETS.find(x => x.target_id === r.target_id) &&
+       !newT.find(x => x.target_id === r.target_id))
+      newT.push({target_id: r.target_id, name: r.target_name || r.target_id,
+                 sort_no: 999, enabled: 1, created_at: fmtDT(nowDT()), updated_at: fmtDT(nowDT())});
+  });
+  if(newW.length) await putMany("works", newW);
+  if(newT.length) await putMany("targets", newT);
+  closeDlg(); await loadMasters(); renderMasters();
+  await refreshPunch(); await refreshChips(); await renderLog();
+  toast("取り込みました：" + add.length + " 件（重ならないもの）／読み飛ばし " + skip + " 件" +
+        (enc ? "　［" + enc + "］" : ""));
+}
+
+/* 実行中（終了日時が空）の行は1つだけにする。
+   PC側で実行中だった行を取り込んだときに、こちらの実行中と2つ並ばないように。
+   新しいほうを残し、古いほうは「始まりの1分後」で閉じる（PC版の save_entry と同じ扱い）。 */
+async function closeExtraRunning(){
+  const all = await getAll("entries");
+  const run = all.filter(r => !r.end_at)
+      .sort((x, y) => x.start_at < y.start_at ? 1 : x.start_at > y.start_at ? -1 : y.id - x.id);
+  for(let i = 1; i < run.length; i++){
+    const r = run[i]; const st = parseDT(r.start_at);
+    r.end_at = fmtDT(new Date(st.getTime() + 60000)); r.updated_at = fmtDT(nowDT());
+    await putRec("entries", r);
+  }
+  return run.length > 1 ? run.length - 1 : 0;
+}
+/* 取り込むファイルの文字コードを見分ける。
+   Android版が書き出す CSV は UTF-8（BOM付き）、PC版が書き出す CSV は cp932。
+   BOM があれば UTF-8。無ければ UTF-8 として厳しく読んでみて、
+   だめだったものを cp932（Shift_JIS）として読み直す。 */
+function decodeBytes(buf){
+  const b = new Uint8Array(buf);
+  if(b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF)
+    return {text: new TextDecoder("utf-8").decode(b.subarray(3)), enc: "UTF-8"};
+  try {
+    return {text: new TextDecoder("utf-8", {fatal:true}).decode(b), enc: "UTF-8"};
+  } catch(e){
+    try {
+      return {text: new TextDecoder("shift_jis").decode(b), enc: "cp932"};
+    } catch(e2){
+      return {text: new TextDecoder("utf-8").decode(b), enc: "UTF-8"};
+    }
+  }
+}
+function pickFile(){
+  const f = $("filePick");
+  f.value = "";
+  f.onchange = () => {
+    const file = f.files && f.files[0]; if(!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const d = decodeBytes(rd.result);
+      importText(file.name, d.text, d.enc);
+    };
+    rd.readAsArrayBuffer(file);
+  };
+  f.click();
+}
+
+/* ---------------- 設定 ---------------- */
+async function openCfgDlg(){
+  const n = (await getAll("entries")).length;
+  dlg("設定",
+    '<div class="sec">数えかた</div>' +
+    '<div class="form">' +
+    '<div><label class="k">一日の始まり</label><input id="cDay" type="text" value="' +
+      esc(CFG.day_start) + '"><div class="hint">既定 05:00。深夜0時をまたいでも、' +
+      'この時刻より前は前の日の記録になります。</div></div>' +
+    '<div class="two2">' +
+    '<div><label class="k">打刻の丸め（分）</label><input id="cRound" type="number" min="0" max="60" value="' +
+      (CFG.round_minutes||0) + '"></div>' +
+    '<div><label class="k">長すぎる印（時間）</label><input id="cWarn" type="number" min="1" max="48" value="' +
+      (CFG.warn_hours||12) + '"></div></div>' +
+    '<div class="hint">丸めは 0 なら丸めません（5 にすると 5分きざみ）。</div>' +
+    '</div>' +
+    '<div class="sec">データ</div>' +
+    '<div class="kv">記録 <b>' + n + '</b> 件／作業 <b>' + WORKS.length +
+      '</b> 件／ターゲット <b>' + TARGETS.length + '</b> 件<br>' +
+      '保存先はこの端末のブラウザの中（IndexedDB）です。' +
+      'アプリのデータを消すと記録も消えるので、ときどき控えを書き出してください。</div>' +
+    '<div class="stack" style="margin-top:10px">' +
+    '<button class="btn" id="cBackup">控えを書き出す（JSON）</button>' +
+    '<button class="btn" id="cImport">控え／CSVを取り込む</button>' +
+    '<button class="btn danger" id="cWipe">記録を全部消す</button>' +
+    '</div>' +
+    '<div class="sec">このアプリ</div>' +
+    '<div class="kv">作業時間管理 Android版 <b>v' + APP_VERSION + '</b><br>' +
+      'PC版（Python＋WebView2）と同じ数えかた・同じCSVの並びです。<br>' +
+      'PC版のCSV（cp932）も、UTF-8のCSVも、そのまま取り込めます。</div>',
+    [{label:"閉じる", on: closeDlg},
+     {label:"保存", kind:"primary", on: async () => {
+       const ds = ($("cDay").value||"").trim();
+       if(!/^\d{1,2}:\d{2}$/.test(ds)){ toast("一日の始まりは 05:00 の形で入れてください"); return; }
+       CFG.day_start = ds;
+       CFG.round_minutes = Math.max(0, Math.min(60, parseInt($("cRound").value||0, 10) || 0));
+       CFG.warn_hours = Math.max(1, Math.min(48, parseInt($("cWarn").value||12, 10) || 12));
+       await saveCfg(); closeDlg(); toast("設定を保存しました");
+       logDate = ""; await refreshPunch(); await refreshChips(); await renderLog();
+     }}]);
+  $("cBackup").onclick = exportBackup;
+  $("cImport").onclick = pickFile;
+  $("cWipe").onclick = async () => {
+    if(!confirm("記録を全部消します。よろしいですか？（作業・ターゲットの一覧は残ります）")) return;
+    await clearStore("entries"); logChecked = {};
+    closeDlg(); toast("記録を全部消しました");
+    await refreshPunch(); await refreshChips(); await renderLog();
+  };
+}
+
+/* ---------------- 立ち上げ ---------------- */
+function showPage(name){
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("on"));
+  $("pg-" + name).classList.add("on");
+  document.querySelectorAll("nav.tabs button").forEach(b =>
+    b.classList.toggle("on", b.dataset.page === name));
+  if(name === "log") renderLog();
+  if(name === "mst") renderMasters();
+  if(name === "sum" && !sumData) doSummary();
+}
+function shiftDate(days){
+  const d = parseD(logDate || businessDate());
+  d.setDate(d.getDate() + days);
+  logDate = fmtD(d); logChecked = {}; renderLog();
+}
+function weekRange(){
+  const t = parseD(businessDate());
+  const dow = (t.getDay() + 6) % 7;           // 月曜はじまり
+  const a = new Date(t.getTime()); a.setDate(a.getDate() - dow);
+  return [fmtD(a), businessDate()];
+}
+function monthRange(){
+  const t = parseD(businessDate());
+  return [fmtD(new Date(t.getFullYear(), t.getMonth(), 1)), businessDate()];
+}
+
+async function boot(){
+  $("ver").textContent = "v" + APP_VERSION;
+  await openDB();
+  await loadCfg();
+  let works = await getAll("works");
+  if(!works.length){
+    const now = fmtDT(nowDT());
+    await putMany("works", SEED_WORKS.map((w, i) =>
+      ({work_id: w[0], name: w[1], kind: w[2], sort_no: (i+1)*10, enabled: 1,
+        created_at: now, updated_at: now})));
+  }
+  await loadMasters();
+  renderMasters();
+  logDate = businessDate();
+  $("dDate").value = logDate;
+  $("sFrom").value = businessDate(); $("sTo").value = businessDate();
+  await refreshPunch(); await refreshChips();
+
+  document.querySelectorAll("nav.tabs button").forEach(b =>
+    b.onclick = () => showPage(b.dataset.page));
+  $("bCfg").onclick = openCfgDlg;
+  $("bStop").onclick = stopCurrent;
+  $("bProgress").onclick = async () => { await setProgress(); progDirty = false; noteDirty = false; };
+  $("bAddWork").onclick = () => openWorkDlg(null);
+  $("mAddWork").onclick = () => openWorkDlg(null);
+  $("mAddTarget").onclick = () => openTargetDlg(null);
+  $("pkFind").oninput = renderWorkGrid;
+  $("nowNote").oninput = () => noteDirty = true;
+  $("nowProgress").oninput = () => progDirty = true;
+  $("dPrev").onclick = () => shiftDate(-1);
+  $("dNext").onclick = () => shiftDate(1);
+  $("dToday").onclick = () => { logDate = businessDate(); logChecked = {}; renderLog(); };
+  $("dDate").onchange = () => { logDate = $("dDate").value; logChecked = {}; renderLog(); };
+  $("bAddRow").onclick = () => openEntryDlg(null);
+  $("bDelRow").onclick = async () => {
+    const ids = Object.keys(logChecked).filter(k => logChecked[k]).map(Number);
+    if(!ids.length){ toast("消す行を選んでください"); return; }
+    if(!confirm(ids.length + " 件消します。よろしいですか？")) return;
+    for(const id of ids) await delRec("entries", id);
+    logChecked = {}; toast(ids.length + " 件消しました");
+    await renderLog(); await refreshPunch(); await refreshChips();
+  };
+  $("bSum").onclick = doSummary;
+  document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
+    const p = b.dataset.preset;
+    let f, t;
+    if(p === "today"){ f = businessDate(); t = f; }
+    else if(p === "week"){ [f, t] = weekRange(); }
+    else { [f, t] = monthRange(); }
+    $("sFrom").value = f; $("sTo").value = t; doSummary();
+  });
+  $("bCsvEntries").onclick = exportEntriesCsv;
+  $("bCsvSummary").onclick = exportSummaryCsv;
+  $("mDlg").onclick = (ev) => { if(ev.target.id === "mDlg") closeDlg(); };
+  document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeDlg);
+
+  setInterval(async () => {
+    if(!CUR) return;
+    const st = parseDT(CUR.start_at);
+    const mins = (nowDT() - st)/60000;
+    $("nowElapsed").textContent = hhmm(mins);
+  }, 1000);
+  setInterval(async () => {
+    await refreshChips();
+    if($("pg-punch").classList.contains("on")) await refreshPunch();
+  }, 60000);
+  document.addEventListener("visibilitychange", async () => {
+    if(document.visibilityState === "visible"){
+      await refreshPunch(); await refreshChips();
+      if($("pg-log").classList.contains("on")) await renderLog();
+    }
+  });
+
+  if("serviceWorker" in navigator && location.protocol !== "file:"){
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+}
+boot().catch(e => {
+  document.body.innerHTML = '<div style="padding:20px;line-height:1.8">' +
+    '立ち上げに失敗しました。<br>' + esc(e && e.message || e) + '</div>';
+});
+</script>
+</body>
+</html>

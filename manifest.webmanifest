@@ -1,0 +1,17 @@
+{
+  "name": "作業時間管理",
+  "short_name": "作業時間",
+  "description": "作業を切り替えるだけで時間を記録する、打刻・記録・集計のアプリ",
+  "lang": "ja",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F1E4",
+  "theme_color": "#1F4E79",
+  "icons": [
+    { "src": "icon/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
