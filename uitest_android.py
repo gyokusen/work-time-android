@@ -468,6 +468,35 @@ with sync_playwright() as p:
     pg.click("nav.tabs button[data-page='sum']"); pg.wait_for_timeout(700)
     pg.screenshot(path=os.path.join(ROOT, "_shot_sum.png"))
 
+    # ⑭ 広い画面（PCのブラウザ）で間延びしないか
+    wide = ctx.new_page()
+    wide.set_viewport_size({"width": 1280, "height": 900})
+    wide.goto("http://127.0.0.1:%d/index.html" % PORT)
+    wide.wait_for_timeout(1200)
+    box = wide.evaluate("""()=>{
+      const m = document.querySelector('main').getBoundingClientRect();
+      const h = document.querySelector('header').getBoundingClientRect();
+      const n = document.querySelector('nav.tabs').getBoundingClientRect();
+      return {w: Math.round(m.width), left: Math.round(m.left),
+              right: Math.round(window.innerWidth - m.right),
+              hw: Math.round(h.width), nw: Math.round(n.width)};
+    }""")
+    check("広い画面で幅に上限がかかる（560px）", box["w"] <= 562, box)
+    check("中央に寄る", abs(box["left"] - box["right"]) <= 2, box)
+    check("ヘッダ・下タブも同じ幅", box["hw"] == box["w"] and box["nw"] == box["w"], box)
+    check("広い画面でも横スクロールが出ない",
+          wide.evaluate("()=>document.documentElement.scrollWidth <= window.innerWidth"))
+    ncol = wide.evaluate("""()=>{
+      const g = document.getElementById('workGrid');
+      return getComputedStyle(g).gridTemplateColumns.split(' ').length;}""")
+    check("作業ボタンが3列に収まる", 2 <= ncol <= 3, ncol)
+    wide.close()
+    # 狭い画面（スマホ）では今までどおり画面いっぱい
+    narrow = pg.evaluate("""()=>{
+      const m = document.querySelector('main').getBoundingClientRect();
+      return [Math.round(m.width), window.innerWidth];}""")
+    check("スマホの幅では今までどおり全幅", narrow[0] == narrow[1], narrow)
+
     check("画面のエラーが出ていない", not errs, errs[:3])
     br.close()
 

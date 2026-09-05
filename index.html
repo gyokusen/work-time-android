@@ -175,6 +175,20 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 .kv{font-size:12.5px; color:var(--sub); line-height:1.8; word-break:break-all}
 .kv b{color:var(--ink)}
 
+/* ---- 画面が広いとき ----
+   スマホ向けに作ってあるので、PCの広い画面だと間延びする。
+   幅に上限を付けて中央に寄せ、外側を少し濃くして端を分かるようにする。 */
+@media (min-width:620px){
+  body{background:#E7DFC9}
+  header, main, nav.tabs, #upd{
+    width:100%; max-width:560px; margin-left:auto; margin-right:auto;
+    border-left:1px solid var(--line); border-right:1px solid var(--line);
+  }
+  main{background:var(--bg)}
+  header{border-top:0}
+  nav.tabs{border-bottom:1px solid var(--line)}
+}
+
 /* ---- 新しい版のお知らせ ---- */
 #upd{display:none; flex:none; align-items:center; gap:8px; flex-wrap:wrap;
      background:#EAF1F8; border-top:1px solid var(--navy); padding:9px 12px}
@@ -331,7 +345,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
