@@ -258,6 +258,9 @@ with sync_playwright() as p:
     body0 = pg.inner_text("#dlgBody")
     check("⚙にデータの保護の状態が出る", "データの保護：" in body0,
           [l for l in body0.splitlines() if "データの保護" in l])
+    check("⚙に控えの状態が出る（まだ取っていない）",
+          "まだ一度も取っていません" in body0,
+          [l for l in body0.splitlines() if "控え" in l])
     if ps is not True:
         check("通っていないときは申請ボタンが出る",
               pg.locator("#cPersist").count() == 1)
@@ -272,6 +275,14 @@ with sync_playwright() as p:
         pg.click("#cBackup")
     d3 = di3.value; p3 = os.path.join(DL, d3.suggested_filename); d3.save_as(p3)
     js = json.load(open(p3, encoding="utf-8"))
+    pg.wait_for_timeout(400)
+    lb = pg.evaluate("()=>lastBackup")
+    check("控えを書き出すと日付が残る", bool(lb) and lb[:4] == "2026", lb)
+    # いったん閉じて開き直すと、⚙の表示が「今日」になる
+    pg.click("#mDlg .x"); pg.wait_for_timeout(300)
+    pg.click("#bCfg"); pg.wait_for_timeout(400)
+    check("⚙の控えの表示が「今日」になる", "（今日）" in pg.inner_text("#dlgBody"),
+          [l for l in pg.inner_text("#dlgBody").splitlines() if "控え" in l])
     check("控えJSONにBOMが付かない", open(p3, "rb").read()[:1] != b"\xef")
     check("控えに記録が入る", len(js.get("entries", [])) == nall, (len(js.get("entries", [])), nall))
     check("控えに作業とターゲットが入る",
@@ -359,6 +370,39 @@ with sync_playwright() as p:
         # PC版が出すのと同じ cp932 で置き換える（実際の運用と同じ形）
         # 元（UTF-8 BOM付き）に戻す
         open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="utf-8-sig", newline="").write(orig)
+
+    # ⑪b 控えの催促
+    pg.evaluate("""async()=>{
+      // 15日前に控えを取ったことにして、催促が出るか見る
+      const d = new Date(Date.now() - 15*86400000);
+      const p2 = n => String(n).padStart(2,'0');
+      lastBackup = d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+' 09:00:00';
+      await putRec('meta', {k:'last_backup', v:lastBackup});
+      bkHidden = false;
+      await checkBackup();
+    }""")
+    pg.wait_for_timeout(600)
+    check("控えが古いと催促が出る",
+          pg.locator("#bk").evaluate("el=>el.classList.contains('on')"))
+    check("催促に日数が出る", "15 日" in pg.inner_text("#bkText"), pg.inner_text("#bkText"))
+    pg.click("#bkNo"); pg.wait_for_timeout(300)
+    check("［あとで］で催促が消える",
+          not pg.locator("#bk").evaluate("el=>el.classList.contains('on')"))
+    pg.evaluate("checkBackup()"); pg.wait_for_timeout(400)
+    check("あとでを押したら、その回は出し直さない",
+          not pg.locator("#bk").evaluate("el=>el.classList.contains('on')"))
+    # 催促の［控えを書き出す］で書き出せて、催促が消える
+    pg.evaluate("()=>{bkHidden=false;}")
+    pg.evaluate("checkBackup()"); pg.wait_for_timeout(500)
+    with pg.expect_download() as di4:
+        pg.click("#bkGo")
+    di4.value.save_as(os.path.join(DL, di4.value.suggested_filename))
+    pg.wait_for_timeout(600)
+    check("催促から控えを書き出すと消える",
+          not pg.locator("#bk").evaluate("el=>el.classList.contains('on')"))
+    check("書き出したので日数が今日になる",
+          pg.evaluate("()=>daysSince(lastBackup)") == 0,
+          pg.evaluate("()=>lastBackup"))
 
     # ⑫ PC版のCSV（cp932）を取り込む
     imp932 = os.path.join(DL, "作業記録_cp932.csv")

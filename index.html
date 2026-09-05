@@ -180,7 +180,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
    幅に上限を付けて中央に寄せ、外側を少し濃くして端を分かるようにする。 */
 @media (min-width:620px){
   body{background:#E7DFC9}
-  header, main, nav.tabs, #upd{
+  header, main, nav.tabs, #upd, #bk{
     width:100%; max-width:560px; margin-left:auto; margin-right:auto;
     border-left:1px solid var(--line); border-right:1px solid var(--line);
   }
@@ -195,6 +195,11 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 #upd.on{display:flex}
 #updText{flex:1; min-width:150px; font-size:13px; color:var(--navy); font-weight:700;
          line-height:1.5}
+#bk{display:none; flex:none; align-items:center; gap:8px; flex-wrap:wrap;
+    background:#FBF4E4; border-top:1px solid #E9DCB9; padding:9px 12px}
+#bk.on{display:flex}
+#bkText{flex:1; min-width:150px; font-size:13px; color:var(--warn); font-weight:700;
+        line-height:1.5}
 
 /* ---- お知らせ ---- */
 #toast{position:fixed; left:50%; bottom:calc(70px + var(--safe-b));
@@ -326,6 +331,12 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
   <button class="btn sm" id="updNo">あとで</button>
 </div>
 
+<div id="bk">
+  <span id="bkText"></span>
+  <button class="btn sm primary" id="bkGo">控えを書き出す</button>
+  <button class="btn sm" id="bkNo">あとで</button>
+</div>
+
 <nav class="tabs" id="tabs">
   <button data-page="punch" class="on"><span class="ic">⏱</span>打刻</button>
   <button data-page="log"><span class="ic">📋</span>記録</button>
@@ -345,7 +356,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -1020,6 +1031,9 @@ async function exportBackup(){
     entries: await getAll("entries")};
   download("作業時間管理_控え_" + fmtD(nowDT()).replace(/-/g,"") + "_" + stamp() + ".json",
            JSON.stringify(data, null, 1), "application/json");
+  lastBackup = fmtDT(nowDT());
+  await putRec("meta", {k: "last_backup", v: lastBackup});
+  $("bk").classList.remove("on");
 }
 
 function parseCsv(text){
@@ -1217,6 +1231,7 @@ async function openCfgDlg(){
     '<div class="sec">データ</div>' +
     '<div class="kv">記録 <b>' + n + '</b> 件／作業 <b>' + WORKS.length +
       '</b> 件／ターゲット <b>' + TARGETS.length + '</b> 件<br>' +
+      backupText() + '<br>' +
       persistText() + '<br>' +
       '保存先はこの端末のブラウザの中（IndexedDB）です。' +
       'アプリのデータを消すと記録も消えるので、ときどき控えを書き出してください。<br>' +
@@ -1308,6 +1323,41 @@ function persistText(){
   return "データの保護：このブラウザでは調べられません。控えの書き出しをお忘れなく";
 }
 
+/* ---------------- 控えを取ったのはいつか ----------------
+   記録はこの端末の中にしかない。ブラウザが消してしまえばそれまでなので、
+   最後に控えを取った日を覚えておいて、間があいたら知らせる。 */
+const BACKUP_DAYS = 14;          // これを超えたら知らせる
+let lastBackup = "", bkHidden = false;
+
+async function loadLastBackup(){
+  try {
+    const r = await pr(tx(["meta"]).objectStore("meta").get("last_backup"));
+    lastBackup = (r && r.v) || "";
+  } catch(e){ lastBackup = ""; }
+}
+function daysSince(s){
+  const d = parseDT(s);
+  if(!d) return null;
+  return Math.floor((nowDT() - d) / 86400000);
+}
+function backupText(){
+  if(!lastBackup) return "控えの書き出し：<b>まだ一度も取っていません</b>";
+  const n = daysSince(lastBackup);
+  return "最後の控え：<b>" + esc(lastBackup.slice(0, 10)) + "</b>（" +
+         (n === 0 ? "今日" : n + "日前") + "）";
+}
+async function checkBackup(){
+  if(bkHidden) return;                                  // この回は「あとで」と言われた
+  if($("upd").classList.contains("on")) return;         // 更新のお知らせを先に出す
+  if(!(await getAll("entries")).length) return;         // 記録が無いうちは言わない
+  const n = lastBackup ? daysSince(lastBackup) : null;
+  if(n !== null && n < BACKUP_DAYS) return;
+  $("bkText").textContent = lastBackup
+    ? "控えを取ってから " + n + " 日たちました"
+    : "記録の控えを、まだ一度も取っていません";
+  $("bk").classList.add("on");
+}
+
 /* ---------------- 新しい版のお知らせ ---------------- */
 /* Android のホーム画面アプリは、閉じて開き直しても前の画面をそのまま出すことがある。
    その場合は読み直しが起きないので、置き場を新しくしても古いままになる。
@@ -1328,6 +1378,7 @@ async function checkUpdate(force){
     if(v === APP_VERSION || v === updSeen) return;
     $("updText").textContent = "新しい版 v" + v + " があります（いまは v" + APP_VERSION + "）";
     $("upd").classList.add("on");
+    $("bk").classList.remove("on");
     $("updGo").dataset.v = v;
   } catch(e){ /* 電波が無いときなどは何もしない */ }
 }
@@ -1394,6 +1445,7 @@ async function boot(){
   $("sFrom").value = businessDate(); $("sTo").value = businessDate();
   await refreshPunch(); await refreshChips();
   persistState = await askPersist();   // 記録を消されないよう、先に申し込んでおく
+  await loadLastBackup();
 
   document.querySelectorAll("nav.tabs button").forEach(b =>
     b.onclick = () => showPage(b.dataset.page));
@@ -1453,10 +1505,13 @@ async function boot(){
       await refreshPunch(); await refreshChips();
       if($("pg-log").classList.contains("on")) await renderLog();
       checkUpdate();
+      checkBackup();
     }
   });
 
   $("updGo").onclick = doUpdate;
+  $("bkGo").onclick = async () => { await exportBackup(); };
+  $("bkNo").onclick = () => { bkHidden = true; $("bk").classList.remove("on"); };
   $("updNo").onclick = () => {
     updSeen = $("updGo").dataset.v || "";   // この版は、次に開くまで出さない
     $("upd").classList.remove("on");
@@ -1464,6 +1519,7 @@ async function boot(){
   checkUpdate(true);
   // 置き場に上げた直後は、まだ反映が終わっていないことがある。30秒後にもう一度
   setTimeout(() => checkUpdate(true), 30000);
+  setTimeout(checkBackup, 1500);   // 更新のお知らせが先に出たら、そちらを立てる
 
   if("serviceWorker" in navigator && location.protocol !== "file:"){
     navigator.serviceWorker.register("sw.js").catch(() => {});
