@@ -251,6 +251,23 @@ with sync_playwright() as p:
     pg.click("#bCfg"); pg.wait_for_timeout(400)
     check("設定が開く", "設定" == pg.inner_text("#dlgTitle"))
     check("件数が出る", "記録" in pg.inner_text("#dlgBody"))
+    # 記録を消されないようにする申請
+    ps = pg.evaluate("()=>persistState")
+    check("起動時に保護を申し込んでいる（true/false/null のどれか）",
+          ps in (True, False, None), ps)
+    body0 = pg.inner_text("#dlgBody")
+    check("⚙にデータの保護の状態が出る", "データの保護：" in body0,
+          [l for l in body0.splitlines() if "データの保護" in l])
+    if ps is not True:
+        check("通っていないときは申請ボタンが出る",
+              pg.locator("#cPersist").count() == 1)
+        real = pg.evaluate("""async()=>{
+          if(!navigator.storage || !navigator.storage.persist) return "無し";
+          return typeof (await navigator.storage.persisted());}""")
+        check("ブラウザに申請の窓口がある", real in ("boolean", "無し"), real)
+    else:
+        check("通っているときは申請ボタンを出さない",
+              pg.locator("#cPersist").count() == 0)
     with pg.expect_download() as di3:
         pg.click("#cBackup")
     d3 = di3.value; p3 = os.path.join(DL, d3.suggested_filename); d3.save_as(p3)

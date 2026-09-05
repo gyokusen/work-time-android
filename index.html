@@ -345,7 +345,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.3.0";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -1217,12 +1217,15 @@ async function openCfgDlg(){
     '<div class="sec">データ</div>' +
     '<div class="kv">記録 <b>' + n + '</b> 件／作業 <b>' + WORKS.length +
       '</b> 件／ターゲット <b>' + TARGETS.length + '</b> 件<br>' +
+      persistText() + '<br>' +
       '保存先はこの端末のブラウザの中（IndexedDB）です。' +
       'アプリのデータを消すと記録も消えるので、ときどき控えを書き出してください。<br>' +
       '［初期マスタを読み込み直す］は、置き場にある ' + esc(MASTER_CSV) +
       ' を読んで作業・ターゲットを足します（記録は変わりません）。</div>' +
     '<div class="stack" style="margin-top:10px">' +
     '<button class="btn" id="cBackup">控えを書き出す（JSON）</button>' +
+    (persistState === true ? "" :
+      '<button class="btn" id="cPersist">データの保護を申請する</button>') +
     '<button class="btn" id="cImport">控え／CSVを取り込む</button>' +
     '<button class="btn" id="cMaster">初期マスタを読み込み直す</button>' +
     '<button class="btn" id="cUpd">新しい版があるか確認する</button>' +
@@ -1246,6 +1249,13 @@ async function openCfgDlg(){
        logDate = ""; await refreshPunch(); await refreshChips(); await renderLog();
      }}]);
   $("cBackup").onclick = exportBackup;
+  if($("cPersist")) $("cPersist").onclick = async () => {
+    persistState = await askPersist();
+    closeDlg();
+    toast(persistState === true ? "申請が通りました。勝手に消されません"
+        : persistState === false ? "まだ通りませんでした。使い続けると通ることがあります"
+        : "このブラウザでは申請できませんでした");
+  };
   $("cImport").onclick = pickFile;
   $("cUpd").onclick = async () => {
     updSeen = "";
@@ -1268,6 +1278,34 @@ async function openCfgDlg(){
     closeDlg(); toast("記録を全部消しました");
     await refreshPunch(); await refreshChips(); await renderLog();
   };
+}
+
+/* ---------------- 記録を消されないようにする申請 ---------------- */
+/* ブラウザは、置き場所が足りないときや、しばらく使われなかったサイトの
+   データを勝手に消すことがある（とくに iPhone / Safari）。
+   「このデータは消さないでほしい」とブラウザに申し込んでおくと、
+   その対象から外してもらえる。断られることもあるので、結果を⚙に出す。
+
+   true  … 申請が通っている（勝手に消されない）
+   false … まだ通っていない（使い続けると通ることがある）
+   null  … このブラウザでは調べられない */
+let persistState = null;
+
+async function askPersist(){
+  try {
+    if(!navigator.storage || !navigator.storage.persist) return null;
+    if(await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch(e){ return null; }
+}
+
+function persistText(){
+  if(persistState === true)
+    return "データの保護：<b>申請できています</b>（ブラウザが勝手に消しません）";
+  if(persistState === false)
+    return "データの保護：<b>まだ通っていません</b>。" +
+           "使い続けると通ることがあります。控えの書き出しをお忘れなく";
+  return "データの保護：このブラウザでは調べられません。控えの書き出しをお忘れなく";
 }
 
 /* ---------------- 新しい版のお知らせ ---------------- */
@@ -1355,6 +1393,7 @@ async function boot(){
   $("dDate").value = logDate;
   $("sFrom").value = businessDate(); $("sTo").value = businessDate();
   await refreshPunch(); await refreshChips();
+  persistState = await askPersist();   // 記録を消されないよう、先に申し込んでおく
 
   document.querySelectorAll("nav.tabs button").forEach(b =>
     b.onclick = () => showPage(b.dataset.page));
