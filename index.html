@@ -211,7 +211,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
       <button class="btn danger sm" id="bStop">終了する</button>
     </div>
     <div class="now-acts">
-      <input type="text" id="nowNote" placeholder="ひとこと（あとで記録に出ます）">
+      <input type="text" id="nowNote" placeholder="ひとこと（例 p.10〜20）。いまの作業に残ります">
     </div>
   </div>
 
@@ -318,7 +318,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.1.2";
+const APP_VERSION = "1.2.0";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -501,23 +501,38 @@ async function findCurrent(){
 }
 
 /* ---------------- 打刻 ---------------- */
+/* 作業ボタンを押したときの打刻。
+
+   ひとこと・進捗は「いまの作業」のものとして扱う。
+   ボタンを押したら、まず画面のひとこと・進捗をいまの記録に書き込んでから区切り、
+   新しい区間はひとことを空にして始める（PC版の「切替の前に自動反映」と同じ）。
+   いま何もしていないときだけ、ひとことはこれから始める作業に付く。
+
+   同じ作業をもう一度押したときは、押し間違いと区別できないので確認する。
+   「はい」なら、そこで区切って同じ作業を始め直す
+   （読んだページ数などを区間ごとに残したいとき用）。 */
 async function switchTo(workId){
   const w = workById(workId);
   if(!w){ toast("その作業は一覧にありません"); return; }
   const targetId = $("pkTarget").value || "";
   const t = TARGETS.find(x => x.target_id === targetId);
   const note = ($("nowNote").value || "").trim();
+  const prog = Math.max(0, Math.min(100, parseInt($("nowProgress").value || 0, 10) || 0));
   const at = roundDT(nowDT());
   const cur = await findCurrent();
-  if(cur && cur.work_id === workId && (cur.target_id||"") === targetId){
-    toast("すでにその作業をしています（何もしませんでした）"); return;
-  }
+  const same = !!cur && cur.work_id === workId && (cur.target_id || "") === targetId;
+  if(same && !confirm("「" + w.name + "」は、すでに実行中です。\n\n" +
+                      "いったん終了させて、もう一度同じ作業を始めますか？\n" +
+                      "（いまのひとこと・進捗は、ここまでの記録に残ります）")) return;
   let closed = "";
   if(cur){
     const st = parseDT(cur.start_at);
     const end = at > st ? at : new Date(st.getTime() + 60000);
     const rec = await pr(tx(["entries"]).objectStore("entries").get(cur.id));
-    rec.end_at = fmtDT(end); rec.updated_at = fmtDT(nowDT());
+    rec.end_at = fmtDT(end);
+    rec.note = note;                 // 画面のひとことは、終わる区間に残す
+    rec.progress = prog;
+    rec.updated_at = fmtDT(nowDT());
     await putRec("entries", rec);
     closed = "「" + cur.work_name + "」を " + fmtHM(end) + " で終えました（" +
              hhmm((end - st)/60000) + "） / ";
@@ -526,10 +541,13 @@ async function switchTo(workId){
   await putRec("entries", {
     start_at: fmtDT(at), end_at: null, work_id: workId, work_name: w.name,
     target_id: targetId, target_name: t ? t.name : "", progress: 0,
-    note: note, created_at: now, updated_at: now
+    note: cur ? "" : note,           // 何もしていなかったときだけ、新しい方に付ける
+    created_at: now, updated_at: now
   });
-  $("nowNote").value = "";
-  toast(closed + "「" + w.name + "」を " + fmtHM(at) + " から始めました");
+  $("nowNote").value = ""; noteDirty = false;
+  $("nowProgress").value = 0; progDirty = false;
+  toast(closed + "「" + w.name + "」を " + fmtHM(at) + " から" +
+        (same ? "始め直しました" : "始めました"));
   await refreshPunch(); await refreshChips();
   if($("pg-log").classList.contains("on")) await renderLog();
 }
@@ -539,8 +557,13 @@ async function stopCurrent(){
   const at = roundDT(nowDT()); const st = parseDT(cur.start_at);
   const end = at > st ? at : new Date(st.getTime() + 60000);
   const rec = await pr(tx(["entries"]).objectStore("entries").get(cur.id));
-  rec.end_at = fmtDT(end); rec.updated_at = fmtDT(nowDT());
+  rec.end_at = fmtDT(end);
+  rec.note = ($("nowNote").value || "").trim();          // 終わる前に自動で反映
+  rec.progress = Math.max(0, Math.min(100, parseInt($("nowProgress").value || 0, 10) || 0));
+  rec.updated_at = fmtDT(nowDT());
   await putRec("entries", rec);
+  $("nowNote").value = ""; noteDirty = false;
+  $("nowProgress").value = 0; progDirty = false;
   toast("「" + cur.work_name + "」を " + fmtHM(end) + " で終えました（" +
         hhmm((end - st)/60000) + "）");
   await refreshPunch(); await refreshChips();

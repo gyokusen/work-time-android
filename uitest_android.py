@@ -51,11 +51,37 @@ with sync_playwright() as p:
           pg.inner_text("#nowWork"))
     check("経過が 0:00 から数え始める", pg.inner_text("#nowElapsed") == "0:00",
           pg.inner_text("#nowElapsed"))
-    # 同じ作業をもう一度 → 何もしない
+    # 同じ作業をもう一度 → 確認が出る。［キャンセル］なら何もしない
+    msgs = []
+    pg.once("dialog", lambda d: (msgs.append(d.message), d.dismiss()))
     pg.get_by_role("button", name="コーディング", exact=False).first.click()
-    pg.wait_for_timeout(350)
-    check("同じ作業をもう一度押しても増えない",
-          "すでにその作業" in pg.inner_text("#toast"), pg.inner_text("#toast"))
+    pg.wait_for_timeout(500)
+    check("同じ作業で確認が出る", msgs and "すでに実行中" in msgs[0], msgs)
+    check("確認の文に「もう一度同じ作業を始めますか」がある",
+          msgs and "もう一度同じ作業を始めますか" in msgs[0], msgs)
+    n0 = pg.evaluate("async()=>{const a=await getAll('entries');return a.length;}")
+    check("キャンセルなら記録は増えない", n0 == 1, n0)
+    # ［OK］なら、そこで区切って同じ作業を始め直す。ひとことは終わる区間に残る
+    pg.fill("#nowNote", "p.10〜20")
+    pg.fill("#nowProgress", "30")
+    pg.once("dialog", lambda d: d.accept())
+    pg.get_by_role("button", name="コーディング", exact=False).first.click()
+    pg.wait_for_timeout(700)
+    n1 = pg.evaluate("async()=>{const a=await getAll('entries');return a.length;}")
+    check("OKなら区切られて2件になる", n1 == 2, n1)
+    done = pg.evaluate("""async()=>{const a=await getAll('entries');
+      const f=a.filter(r=>r.end_at).sort((x,y)=>x.id-y.id); const r=f[f.length-1];
+      return [r.work_name, r.note, r.progress];}""")
+    check("ひとことは終わった区間に残る", done[1] == "p.10〜20", done)
+    check("進捗も終わった区間に残る", done[2] == 30, done)
+    run = pg.evaluate("""async()=>{const a=await getAll('entries');
+      const r=a.find(x=>!x.end_at); return [r.work_name, r.note, r.progress];}""")
+    check("続きの区間は同じ作業で、ひとことは空", run[0] == "コーディング" and run[1] == "",
+          run)
+    check("画面のひとこと欄も空になる", pg.input_value("#nowNote") == "",
+          pg.input_value("#nowNote"))
+    check("始め直しの知らせが出る", "始め直しました" in pg.inner_text("#toast"),
+          pg.inner_text("#toast"))
     # 切替
     pg.get_by_role("button", name="ドキュメント", exact=False).first.click()
     pg.wait_for_timeout(400)
@@ -75,7 +101,7 @@ with sync_playwright() as p:
     # ④ 記録タブ
     pg.click("nav.tabs button[data-page='log']"); pg.wait_for_timeout(500)
     rows = pg.locator("#logBody .row").count()
-    check("記録が2件ならぶ", rows == 2, rows)
+    check("記録が3件ならぶ", rows == 3, rows)
     check("実行中の行に印が付く", pg.locator("#logBody .row.run").count() == 1)
     check("合計が出る", "作業" in pg.inner_text("#dTotal"), pg.inner_text("#dTotal"))
 
@@ -89,7 +115,7 @@ with sync_playwright() as p:
     pg.fill("#eNote", "テストで足した行")
     pg.get_by_role("button", name="保存").click()
     pg.wait_for_timeout(600)
-    check("記録を足せる", pg.locator("#logBody .row").count() == 3,
+    check("記録を足せる", pg.locator("#logBody .row").count() == 4,
           pg.locator("#logBody .row").count())
     check("すき間の注意が出る", pg.locator("#gapBox .gap").count() == 1,
           pg.inner_text("#gapBox") if pg.locator("#gapBox .gap").count() else "(なし)")
