@@ -396,6 +396,45 @@ with sync_playwright() as p:
     ver0 = open(ip, encoding="utf-8").read().split('const APP_VERSION = "')[1].split('"')[0]
     check("元の版に戻せる", pg.inner_text("#ver") == "v" + ver0, pg.inner_text("#ver"))
 
+    # ⑬ 新しい版のお知らせ
+    ip2 = os.path.join(ROOT, "index.html")
+    html2 = open(ip2, encoding="utf-8").read()
+    ver_now = html2.split('const APP_VERSION = "')[1].split('"')[0]
+    check("ふだんはお知らせが出ていない",
+          not pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
+    try:
+        open(ip2, "w", encoding="utf-8", newline="").write(
+            html2.replace('const APP_VERSION = "' + ver_now + '"',
+                          'const APP_VERSION = "9.8.7"', 1))
+        pg.evaluate("checkUpdate(true)"); pg.wait_for_timeout(800)
+        on = pg.locator("#upd").evaluate("el=>el.classList.contains('on')")
+        check("置き場が新しいとお知らせが出る", on, on)
+        check("お知らせに新旧の版が出る",
+              "v9.8.7" in pg.inner_text("#updText") and "v" + ver_now in pg.inner_text("#updText"),
+              pg.inner_text("#updText"))
+        # ［あとで］で消える／同じ版では出し直さない
+        pg.click("#updNo"); pg.wait_for_timeout(300)
+        check("［あとで］で消える",
+              not pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
+        pg.evaluate("checkUpdate(true)"); pg.wait_for_timeout(600)
+        check("あとでを押した版は出し直さない",
+              not pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
+        # ⚙の［新しい版があるか確認する］でもう一度見に行ける
+        pg.click("#bCfg"); pg.wait_for_timeout(400)
+        pg.click("#cUpd"); pg.wait_for_timeout(900)
+        check("⚙から確認するとまた出る",
+              pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
+        # ［更新する］で読み直し、新しい版になる
+        pg.click("#updGo"); pg.wait_for_timeout(2500)
+        check("［更新する］で新しい版になる", pg.inner_text("#ver") == "v9.8.7",
+              pg.inner_text("#ver"))
+    finally:
+        open(ip2, "w", encoding="utf-8", newline="").write(html2)
+        pg.reload(); pg.wait_for_timeout(1500)
+    check("元の版に戻る", pg.inner_text("#ver") == "v" + ver_now, pg.inner_text("#ver"))
+    check("戻したあとはお知らせが出ない",
+          not pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
+
     pg.screenshot(path=os.path.join(ROOT, "_shot_punch.png"))
     pg.click("nav.tabs button[data-page='log']"); pg.wait_for_timeout(500)
     pg.screenshot(path=os.path.join(ROOT, "_shot_log.png"))

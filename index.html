@@ -175,6 +175,13 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 .kv{font-size:12.5px; color:var(--sub); line-height:1.8; word-break:break-all}
 .kv b{color:var(--ink)}
 
+/* ---- 新しい版のお知らせ ---- */
+#upd{display:none; flex:none; align-items:center; gap:8px; flex-wrap:wrap;
+     background:#EAF1F8; border-top:1px solid var(--navy); padding:9px 12px}
+#upd.on{display:flex}
+#updText{flex:1; min-width:150px; font-size:13px; color:var(--navy); font-weight:700;
+         line-height:1.5}
+
 /* ---- お知らせ ---- */
 #toast{position:fixed; left:50%; bottom:calc(70px + var(--safe-b));
   transform:translateX(-50%) translateY(12px);
@@ -299,6 +306,12 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 </div>
 </main>
 
+<div id="upd">
+  <span id="updText"></span>
+  <button class="btn sm primary" id="updGo">更新する</button>
+  <button class="btn sm" id="updNo">あとで</button>
+</div>
+
 <nav class="tabs" id="tabs">
   <button data-page="punch" class="on"><span class="ic">⏱</span>打刻</button>
   <button data-page="log"><span class="ic">📋</span>記録</button>
@@ -318,7 +331,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -1198,6 +1211,7 @@ async function openCfgDlg(){
     '<button class="btn" id="cBackup">控えを書き出す（JSON）</button>' +
     '<button class="btn" id="cImport">控え／CSVを取り込む</button>' +
     '<button class="btn" id="cMaster">初期マスタを読み込み直す</button>' +
+    '<button class="btn" id="cUpd">新しい版があるか確認する</button>' +
     '<button class="btn danger" id="cWipe">記録を全部消す</button>' +
     '</div>' +
     '<div class="sec">このアプリ</div>' +
@@ -1216,6 +1230,12 @@ async function openCfgDlg(){
      }}]);
   $("cBackup").onclick = exportBackup;
   $("cImport").onclick = pickFile;
+  $("cUpd").onclick = async () => {
+    updSeen = "";
+    await checkUpdate(true);
+    if($("upd").classList.contains("on")){ closeDlg(); }
+    else toast("いまが最新です（v" + APP_VERSION + "）");
+  };
   $("cMaster").onclick = async () => {
     const csv = await fetchMasterCsv();
     if(!csv){ toast(MASTER_CSV + " が置き場に見つかりませんでした"); return; }
@@ -1231,6 +1251,38 @@ async function openCfgDlg(){
     closeDlg(); toast("記録を全部消しました");
     await refreshPunch(); await refreshChips(); await renderLog();
   };
+}
+
+/* ---------------- 新しい版のお知らせ ---------------- */
+/* Android のホーム画面アプリは、閉じて開き直しても前の画面をそのまま出すことがある。
+   その場合は読み直しが起きないので、置き場を新しくしても古いままになる。
+   そこで、アプリ自身が置き場の index.html を見て版を比べ、違っていたら知らせる。 */
+let updSeen = "", updAt = 0;
+
+async function checkUpdate(force){
+  const t = Date.now();
+  if(!force && t - updAt < 60000) return;      // 立て続けには見に行かない
+  updAt = t;
+  try {
+    const r = await fetch("index.html", {cache: "no-store"});
+    if(!r.ok) return;
+    const m = (await r.text()).match(/const APP_VERSION = "([0-9.]+)"/);
+    if(!m) return;
+    const v = m[1];
+    if(v === APP_VERSION || v === updSeen) return;
+    $("updText").textContent = "新しい版 v" + v + " があります（いまは v" + APP_VERSION + "）";
+    $("upd").classList.add("on");
+    $("updGo").dataset.v = v;
+  } catch(e){ /* 電波が無いときなどは何もしない */ }
+}
+
+async function doUpdate(){
+  $("updText").textContent = "読み込み直しています…";
+  try {
+    // ブラウザの手元の控えではなく、置き場から取り直させる
+    await fetch(location.href, {cache: "reload"});
+  } catch(e){}
+  location.reload();
 }
 
 /* ---------------- 立ち上げ ---------------- */
@@ -1340,8 +1392,16 @@ async function boot(){
     if(document.visibilityState === "visible"){
       await refreshPunch(); await refreshChips();
       if($("pg-log").classList.contains("on")) await renderLog();
+      checkUpdate();
     }
   });
+
+  $("updGo").onclick = doUpdate;
+  $("updNo").onclick = () => {
+    updSeen = $("updGo").dataset.v || "";   // この版は、次に開くまで出さない
+    $("upd").classList.remove("on");
+  };
+  checkUpdate(true);
 
   if("serviceWorker" in navigator && location.protocol !== "file:"){
     navigator.serviceWorker.register("sw.js").catch(() => {});
