@@ -318,7 +318,8 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.1.0";
+const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
   ["W001","席外し","休憩"],["W002","バスルーム","休憩"],["W003","保守作業","作業"],
@@ -1082,6 +1083,53 @@ function decodeBytes(buf){
     }
   }
 }
+/* 置き場（index.html と同じ場所）にある 初期マスタ.csv を取りに行く。
+   無ければ null。file:// で開いたときも null になる。 */
+async function fetchMasterCsv(){
+  try {
+    const r = await fetch(MASTER_CSV, {cache: "no-cache"});
+    if(!r.ok) return null;
+    const t = decodeBytes(await r.arrayBuffer()).text;
+    return (t && t.indexOf("種別") >= 0) ? t : null;
+  } catch(e){ return null; }
+}
+
+/* 初期マスタCSVを反映する。
+   すでにあるIDは名称・区分・並び・使うを書き換え、無いIDは足す。
+   **消しはしない。記録（entries）にも触らない。** */
+async function applyMasterCsv(text){
+  const rows = parseCsv(text);
+  if(rows.length < 2) return null;
+  const head = rows[0].map(s => s.trim());
+  const ix = (n) => head.indexOf(n);
+  if(ix("種別") < 0 || ix("ID") < 0 || ix("名称") < 0) return null;
+  const now = fmtDT(nowDT());
+  const wMap = {}, tMap = {};
+  (await getAll("works")).forEach(r => wMap[r.work_id] = r);
+  (await getAll("targets")).forEach(r => tMap[r.target_id] = r);
+  const wPut = [], tPut = []; let skip = 0;
+  for(let i = 1; i < rows.length; i++){
+    const c = rows[i];
+    const sec = (c[ix("種別")] || "").trim();
+    const id = (c[ix("ID")] || "").trim().toUpperCase();
+    const name = (c[ix("名称")] || "").trim();
+    if(!id || !name){ skip++; continue; }
+    const sort = ix("並び") >= 0 ? (parseInt(c[ix("並び")], 10) || 999) : 999;
+    const en = ix("使う") >= 0 && String(c[ix("使う")]).trim() === "0" ? 0 : 1;
+    if(sec === "作業"){
+      const k = ix("区分") >= 0 && (c[ix("区分")] || "").trim() === "休憩" ? "休憩" : "作業";
+      wPut.push(Object.assign({work_id: id, created_at: now}, wMap[id] || {},
+        {name: name, kind: k, sort_no: sort, enabled: en, updated_at: now}));
+    } else if(sec === "ターゲット"){
+      tPut.push(Object.assign({target_id: id, created_at: now}, tMap[id] || {},
+        {name: name, sort_no: sort, enabled: en, updated_at: now}));
+    } else skip++;
+  }
+  if(wPut.length) await putMany("works", wPut);
+  if(tPut.length) await putMany("targets", tPut);
+  return {w: wPut.length, t: tPut.length, skip: skip};
+}
+
 function pickFile(){
   const f = $("filePick");
   f.value = "";
@@ -1117,10 +1165,13 @@ async function openCfgDlg(){
     '<div class="kv">記録 <b>' + n + '</b> 件／作業 <b>' + WORKS.length +
       '</b> 件／ターゲット <b>' + TARGETS.length + '</b> 件<br>' +
       '保存先はこの端末のブラウザの中（IndexedDB）です。' +
-      'アプリのデータを消すと記録も消えるので、ときどき控えを書き出してください。</div>' +
+      'アプリのデータを消すと記録も消えるので、ときどき控えを書き出してください。<br>' +
+      '［初期マスタを読み込み直す］は、置き場にある ' + esc(MASTER_CSV) +
+      ' を読んで作業・ターゲットを足します（記録は変わりません）。</div>' +
     '<div class="stack" style="margin-top:10px">' +
     '<button class="btn" id="cBackup">控えを書き出す（JSON）</button>' +
     '<button class="btn" id="cImport">控え／CSVを取り込む</button>' +
+    '<button class="btn" id="cMaster">初期マスタを読み込み直す</button>' +
     '<button class="btn danger" id="cWipe">記録を全部消す</button>' +
     '</div>' +
     '<div class="sec">このアプリ</div>' +
@@ -1139,6 +1190,15 @@ async function openCfgDlg(){
      }}]);
   $("cBackup").onclick = exportBackup;
   $("cImport").onclick = pickFile;
+  $("cMaster").onclick = async () => {
+    const csv = await fetchMasterCsv();
+    if(!csv){ toast(MASTER_CSV + " が置き場に見つかりませんでした"); return; }
+    const r = await applyMasterCsv(csv);
+    if(!r){ toast(MASTER_CSV + " の見出しが違います（種別・ID・名称 が要ります）"); return; }
+    closeDlg(); await loadMasters(); renderMasters(); await refreshPunch();
+    toast("初期マスタを読みました：作業 " + r.w + " 件／ターゲット " + r.t + " 件" +
+          (r.skip ? "／読み飛ばし " + r.skip + " 件" : ""));
+  };
   $("cWipe").onclick = async () => {
     if(!confirm("記録を全部消します。よろしいですか？（作業・ターゲットの一覧は残ります）")) return;
     await clearStore("entries"); logChecked = {};
@@ -1179,10 +1239,19 @@ async function boot(){
   await loadCfg();
   let works = await getAll("works");
   if(!works.length){
-    const now = fmtDT(nowDT());
-    await putMany("works", SEED_WORKS.map((w, i) =>
-      ({work_id: w[0], name: w[1], kind: w[2], sort_no: (i+1)*10, enabled: 1,
-        created_at: now, updated_at: now})));
+    // 置き場に 初期マスタ.csv があればそれを使う。無ければ内蔵の21件。
+    let done = false;
+    const csv = await fetchMasterCsv();
+    if(csv){
+      const r = await applyMasterCsv(csv);
+      done = !!(r && r.w);
+    }
+    if(!done){
+      const now = fmtDT(nowDT());
+      await putMany("works", SEED_WORKS.map((w, i) =>
+        ({work_id: w[0], name: w[1], kind: w[2], sort_no: (i+1)*10, enabled: 1,
+          created_at: now, updated_at: now})));
+    }
   }
   await loadMasters();
   renderMasters();
