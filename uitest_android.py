@@ -43,6 +43,25 @@ with sync_playwright() as p:
     src = pg.evaluate("async()=>{const a=await getAll('works');return a.find(w=>w.work_id==='W013').name;}")
     check("CSVの名前で入っている（W013＝結合テスト１）", src == "結合テスト１", src)
     check("最初は「何もしていません」", "何もしていません" in pg.inner_text("#nowWork"))
+    # 入力欄の案内文が、欄の幅に収まっているか（切れて「…」にならないか）
+    def fits(sel):
+        return pg.evaluate("""(sel)=>{
+          const el = document.querySelector(sel);
+          const cs = getComputedStyle(el);
+          const s = document.createElement('span');
+          s.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap';
+          s.style.fontFamily = cs.fontFamily; s.style.fontSize = cs.fontSize;
+          s.style.fontWeight = cs.fontWeight; s.style.letterSpacing = cs.letterSpacing;
+          s.textContent = el.placeholder;
+          document.body.appendChild(s);
+          const w = s.getBoundingClientRect().width; s.remove();
+          const avail = el.clientWidth - parseFloat(cs.paddingLeft)
+                                       - parseFloat(cs.paddingRight);
+          return [Math.round(w), Math.round(avail), el.placeholder];
+        }""", sel)
+    for sel, nm in (("#nowNote", "ひとこと"), ("#pkFind", "作業名で絞り込む")):
+        w, avail, ph = fits(sel)
+        check("案内文が欄に収まる（" + nm + "）", w <= avail, (ph, w, avail))
 
     # ② 打刻（切替式）
     pg.get_by_role("button", name="コーディング", exact=False).first.click()
