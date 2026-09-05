@@ -331,7 +331,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.2.3";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -1217,7 +1217,10 @@ async function openCfgDlg(){
     '<div class="sec">このアプリ</div>' +
     '<div class="kv">作業時間管理 Android版 <b>v' + APP_VERSION + '</b><br>' +
       'PC版（Python＋WebView2）と同じ数えかた・同じCSVの並びです。<br>' +
-      'PC版のCSV（cp932）も、UTF-8のCSVも、そのまま取り込めます。</div>',
+      'PC版のCSV（cp932）も、UTF-8のCSVも、そのまま取り込めます。<br>' +
+      '更新の確認：' + (updLast ? '最後に見たのは ' + esc(updLast)
+                              : 'まだ見に行っていません') +
+      '（開いたとき・戻ったとき・10分ごと）</div>',
     [{label:"閉じる", on: closeDlg},
      {label:"保存", kind:"primary", on: async () => {
        const ds = ($("cDay").value||"").trim();
@@ -1257,7 +1260,7 @@ async function openCfgDlg(){
 /* Android のホーム画面アプリは、閉じて開き直しても前の画面をそのまま出すことがある。
    その場合は読み直しが起きないので、置き場を新しくしても古いままになる。
    そこで、アプリ自身が置き場の index.html を見て版を比べ、違っていたら知らせる。 */
-let updSeen = "", updAt = 0;
+let updSeen = "", updAt = 0, updLast = "";   // updLast … 最後に見に行った時刻
 
 async function checkUpdate(force){
   const t = Date.now();
@@ -1266,6 +1269,7 @@ async function checkUpdate(force){
   try {
     const r = await fetch("index.html", {cache: "no-store"});
     if(!r.ok) return;
+    updLast = fmtHM(nowDT());
     const m = (await r.text()).match(/const APP_VERSION = "([0-9.]+)"/);
     if(!m) return;
     const v = m[1];
@@ -1384,9 +1388,12 @@ async function boot(){
     const mins = (nowDT() - st)/60000;
     $("nowElapsed").textContent = hhmm(mins);
   }, 1000);
+  let tick = 0;
   setInterval(async () => {
     await refreshChips();
     if($("pg-punch").classList.contains("on")) await refreshPunch();
+    // 10分ごとに、置き場が新しくなっていないか見に行く
+    if(++tick % 10 === 0) checkUpdate(true);
   }, 60000);
   document.addEventListener("visibilitychange", async () => {
     if(document.visibilityState === "visible"){
@@ -1402,6 +1409,8 @@ async function boot(){
     $("upd").classList.remove("on");
   };
   checkUpdate(true);
+  // 置き場に上げた直後は、まだ反映が終わっていないことがある。30秒後にもう一度
+  setTimeout(() => checkUpdate(true), 30000);
 
   if("serviceWorker" in navigator && location.protocol !== "file:"){
     navigator.serviceWorker.register("sw.js").catch(() => {});

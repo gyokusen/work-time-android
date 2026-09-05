@@ -394,6 +394,10 @@ with sync_playwright() as p:
     reg = pg.evaluate("""async()=>{const r=await navigator.serviceWorker.getRegistrations();
                                    return r.length;}""")
     check("service worker が登録される", reg >= 1, reg)
+    src2 = pg.evaluate("""async()=>{const r=await fetch('index.html');return await r.text();}""")
+    check("起動30秒後にもう一度確認する",
+          "setTimeout(() => checkUpdate(true), 30000)" in src2)
+    check("10分ごとに確認する", "if(++tick % 10 === 0) checkUpdate(true)" in src2)
     swtxt = pg.evaluate("""async()=>{const r=await fetch('sw.js');return await r.text();}""")
     check("入れ物の名前が wta-v2", 'const CACHE = "wta-v2"' in swtxt)
     check("画面のHTMLはキャッシュを通さない",
@@ -440,6 +444,10 @@ with sync_playwright() as p:
               not pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
         # ⚙の［新しい版があるか確認する］でもう一度見に行ける
         pg.click("#bCfg"); pg.wait_for_timeout(400)
+        body = pg.inner_text("#dlgBody")
+        check("⚙に最後に確認した時刻が出る",
+              "更新の確認：最後に見たのは" in body and "10分ごと" in body,
+              [l for l in body.splitlines() if "更新の確認" in l])
         pg.click("#cUpd"); pg.wait_for_timeout(900)
         check("⚙から確認するとまた出る",
               pg.locator("#upd").evaluate("el=>el.classList.contains('on')"))
