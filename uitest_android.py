@@ -349,6 +349,26 @@ with sync_playwright() as p:
     reg = pg.evaluate("""async()=>{const r=await navigator.serviceWorker.getRegistrations();
                                    return r.length;}""")
     check("service worker が登録される", reg >= 1, reg)
+    swtxt = pg.evaluate("""async()=>{const r=await fetch('sw.js');return await r.text();}""")
+    check("入れ物の名前が wta-v2", 'const CACHE = "wta-v2"' in swtxt)
+    check("画面のHTMLはキャッシュを通さない",
+          'cache: "no-store"' in swtxt and "isDoc(req)" in swtxt)
+    check("初期マスタ.csv は addAll に入れていない", "初期マスタ.csv" not in
+          swtxt.split("self.addEventListener")[0].split("const FILES")[1].split("];")[0])
+    # 置き場を新しくしたら、開き直しで新しい画面になるか（実際に index.html を差し替える）
+    ip = os.path.join(ROOT, "index.html")
+    html = open(ip, encoding="utf-8").read()
+    try:
+        open(ip, "w", encoding="utf-8", newline="").write(
+            html.replace('const APP_VERSION = "', 'const APP_VERSION = "9.9.9"; //', 1))
+        pg.reload(); pg.wait_for_timeout(1500)
+        check("置き場を新しくすると開き直しで新版になる",
+              pg.inner_text("#ver") == "v9.9.9", pg.inner_text("#ver"))
+    finally:
+        open(ip, "w", encoding="utf-8", newline="").write(html)
+        pg.reload(); pg.wait_for_timeout(1500)
+    ver0 = open(ip, encoding="utf-8").read().split('const APP_VERSION = "')[1].split('"')[0]
+    check("元の版に戻せる", pg.inner_text("#ver") == "v" + ver0, pg.inner_text("#ver"))
 
     pg.screenshot(path=os.path.join(ROOT, "_shot_punch.png"))
     pg.click("nav.tabs button[data-page='log']"); pg.wait_for_timeout(500)
