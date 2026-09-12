@@ -356,7 +356,7 @@ table.t.mst th:last-child,table.t.mst td:last-child{padding-right:9px}
 
 <script>
 "use strict";
-const APP_VERSION = "1.3.1";
+const APP_VERSION = "1.4.0";
 const MASTER_CSV = "初期マスタ.csv";
 const DB_NAME = "work_time", DB_VER = 1;
 const SEED_WORKS = [
@@ -548,7 +548,9 @@ async function findCurrent(){
 
    同じ作業をもう一度押したときは、押し間違いと区別できないので確認する。
    「はい」なら、そこで区切って同じ作業を始め直す
-   （読んだページ数などを区間ごとに残したいとき用）。 */
+   （読んだページ数などを区間ごとに残したいとき用）。
+   **始め直しのときだけは、ひとこと・進捗を新しい区間にも引き継ぐ**（v1.4.0）。
+   欄が空にならないので、ページ数の数字だけ直して続けられる。PC版 v1.4.0 と同じ。 */
 async function switchTo(workId){
   const w = workById(workId);
   if(!w){ toast("その作業は一覧にありません"); return; }
@@ -561,7 +563,7 @@ async function switchTo(workId){
   const same = !!cur && cur.work_id === workId && (cur.target_id || "") === targetId;
   if(same && !confirm("「" + w.name + "」は、すでに実行中です。\n\n" +
                       "いったん終了させて、もう一度同じ作業を始めますか？\n" +
-                      "（いまのひとこと・進捗は、ここまでの記録に残ります）")) return;
+                      "（いまのひとこと・進捗は、ここまでの記録に残り、続きにも引き継ぎます）")) return;
   let closed = "";
   if(cur){
     const st = parseDT(cur.start_at);
@@ -578,12 +580,15 @@ async function switchTo(workId){
   const now = fmtDT(nowDT());
   await putRec("entries", {
     start_at: fmtDT(at), end_at: null, work_id: workId, work_name: w.name,
-    target_id: targetId, target_name: t ? t.name : "", progress: 0,
-    note: cur ? "" : note,           // 何もしていなかったときだけ、新しい方に付ける
+    target_id: targetId, target_name: t ? t.name : "",
+    // 同じ作業を始め直したときは引き継ぐ。別の作業へ切り替えたときは 0 と空で始める。
+    // 何もしていなかったときだけ、画面のひとことはこれから始める作業に付く。
+    progress: same ? prog : 0,
+    note: same ? note : (cur ? "" : note),
     created_at: now, updated_at: now
   });
-  $("nowNote").value = ""; noteDirty = false;
-  $("nowProgress").value = 0; progDirty = false;
+  $("nowNote").value = same ? note : ""; noteDirty = false;
+  $("nowProgress").value = same ? prog : 0; progDirty = false;
   toast(closed + "「" + w.name + "」を " + fmtHM(at) + " から" +
         (same ? "始め直しました" : "始めました"));
   await refreshPunch(); await refreshChips();

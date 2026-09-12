@@ -2,6 +2,7 @@
 """作業時間管理 Android版（PWA）の回帰テスト。
    python -m http.server で配って、スマホの大きさの Chromium で通す。"""
 import http.server, socketserver, threading, functools, os, sys, glob, json, time
+import io, shutil, tempfile
 from playwright.sync_api import sync_playwright
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -11,7 +12,31 @@ os.makedirs(DL, exist_ok=True)
 for f in glob.glob(os.path.join(DL, "*")):
     os.remove(f)
 
-Handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=ROOT)
+# 配るのは置き場そのもの（ROOT）ではなく、テスト用の写し（WEB）。
+#   ・本物の 初期マスタ.csv は職場ごと・自宅用に差し替わるので、
+#     テストは下の決まった 21 件を使う（本物には触らない）
+#   ・版を差し替える試験（⑬）でも、本物の index.html を書き換えずに済む
+WEB = tempfile.mkdtemp(prefix="wta_web_")
+for _n in ("index.html", "manifest.webmanifest", "sw.js"):
+    shutil.copy2(os.path.join(ROOT, _n), os.path.join(WEB, _n))
+if os.path.isdir(os.path.join(ROOT, "icon")):
+    shutil.copytree(os.path.join(ROOT, "icon"), os.path.join(WEB, "icon"))
+TEST_MASTER = "種別,ID,名称,区分,並び,使う\r\n" + "".join(
+    "作業,W%03d,%s,%s,%d,1\r\n" % (i, nm, kd, i * 10) for i, (nm, kd) in enumerate([
+        ("席外し", "休憩"), ("バスルーム", "休憩"), ("保守作業", "作業"),
+        ("GEaRミーティング", "作業"), ("ツールミーティング", "作業"), ("SMILeRPA", "作業"),
+        ("リファクタリング", "作業"), ("ツール開発", "作業"), ("昼休憩", "休憩"),
+        ("コーディング", "作業"), ("ドキュメント", "作業"), ("単体テスト", "作業"),
+        ("結合テスト１", "作業"), ("結合テスト２", "作業"), ("システムテスト", "作業"),
+        ("移行テスト", "作業"), ("運用テスト", "作業"), ("構想", "作業"),
+        ("依頼", "作業"), ("調査", "作業"), ("検討", "作業")], start=1))
+io.open(os.path.join(WEB, "初期マスタ.csv"), "w",
+        encoding="utf-8-sig", newline="").write(TEST_MASTER)
+
+import atexit
+atexit.register(lambda: shutil.rmtree(WEB, ignore_errors=True))
+
+Handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=WEB)
 class Q(socketserver.TCPServer):
     allow_reuse_address = True
     def handle_error(self, *a): pass
@@ -78,6 +103,8 @@ with sync_playwright() as p:
     check("同じ作業で確認が出る", msgs and "すでに実行中" in msgs[0], msgs)
     check("確認の文に「もう一度同じ作業を始めますか」がある",
           msgs and "もう一度同じ作業を始めますか" in msgs[0], msgs)
+    check("確認の文に「続きにも引き継ぎます」がある（v1.4.0）",
+          msgs and "続きにも引き継ぎます" in msgs[0], msgs)
     n0 = pg.evaluate("async()=>{const a=await getAll('entries');return a.length;}")
     check("キャンセルなら記録は増えない", n0 == 1, n0)
     # ［OK］なら、そこで区切って同じ作業を始め直す。ひとことは終わる区間に残る
@@ -95,10 +122,13 @@ with sync_playwright() as p:
     check("進捗も終わった区間に残る", done[2] == 30, done)
     run = pg.evaluate("""async()=>{const a=await getAll('entries');
       const r=a.find(x=>!x.end_at); return [r.work_name, r.note, r.progress];}""")
-    check("続きの区間は同じ作業で、ひとことは空", run[0] == "コーディング" and run[1] == "",
-          run)
-    check("画面のひとこと欄も空になる", pg.input_value("#nowNote") == "",
-          pg.input_value("#nowNote"))
+    check("続きの区間は同じ作業", run[0] == "コーディング", run)
+    check("★続きの区間にもひとことが入る（v1.4.0）", run[1] == "p.10〜20", run)
+    check("★続きの区間に進捗も引き継ぐ（v1.4.0）", run[2] == 30, run)
+    check("★画面のひとこと欄が空にならない（v1.4.0）",
+          pg.input_value("#nowNote") == "p.10〜20", pg.input_value("#nowNote"))
+    check("★画面の進捗も残る（v1.4.0）",
+          pg.input_value("#nowProgress") == "30", pg.input_value("#nowProgress"))
     check("始め直しの知らせが出る", "始め直しました" in pg.inner_text("#toast"),
           pg.inner_text("#toast"))
     # 切替
@@ -107,6 +137,17 @@ with sync_playwright() as p:
     check("切り替えると前の作業が終わる",
           "終えました" in pg.inner_text("#toast") and "始めました" in pg.inner_text("#toast"),
           pg.inner_text("#toast"))
+    # 別の作業へ切り替えたときは引き継がない（終わる区間に残して、新しい方は空）
+    sw = pg.evaluate("""async()=>{const a=await getAll('entries');
+      const run=a.find(x=>!x.end_at);
+      const f=a.filter(r=>r.end_at).sort((x,y)=>x.id-y.id); const done=f[f.length-1];
+      return [run.work_name, run.note, run.progress, done.work_name, done.note, done.progress];}""")
+    check("別の作業なら、ひとことは終わる区間に残る",
+          sw[3] == "コーディング" and sw[4] == "p.10〜20" and sw[5] == 30, sw)
+    check("別の作業なら、新しい区間のひとことは空", sw[1] == "" and sw[2] == 0, sw)
+    check("別の作業なら、画面のひとこと欄も空になる",
+          pg.input_value("#nowNote") == "" and pg.input_value("#nowProgress") == "0",
+          (pg.input_value("#nowNote"), pg.input_value("#nowProgress")))
 
     # ③ ひとことが消えないか（PC版 v1.0.1 の不具合）
     pg.fill("#nowNote", "書きかけ")
@@ -332,10 +373,10 @@ with sync_playwright() as p:
     check("CSVに出てくるターゲットが足される", "T900" in pg.inner_text("#mstTarget"))
 
     # ⑫b 初期マスタの読み込み直し（CSVを差し替えて押す）
-    orig = open(os.path.join(ROOT, "初期マスタ.csv"), "rb").read().decode("utf-8-sig")
+    orig = open(os.path.join(WEB, "初期マスタ.csv"), "rb").read().decode("utf-8-sig")
     try:
         # PC版が出すのと同じ cp932 で置き換える（実際の運用と同じ形）
-        open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="cp932", newline="").write(
+        open(os.path.join(WEB, "初期マスタ.csv"), "w", encoding="cp932", newline="").write(
             orig.replace("\r\n", "\n").rstrip("\n") + "\n"
             "作業,W021,検討（改称）,作業,215,1\n"
             "作業,W030,英語学習,作業,300,1\n"
@@ -369,7 +410,7 @@ with sync_playwright() as p:
     finally:
         # PC版が出すのと同じ cp932 で置き換える（実際の運用と同じ形）
         # 元（UTF-8 BOM付き）に戻す
-        open(os.path.join(ROOT, "初期マスタ.csv"), "w", encoding="utf-8-sig", newline="").write(orig)
+        open(os.path.join(WEB, "初期マスタ.csv"), "w", encoding="utf-8-sig", newline="").write(orig)
 
     # ⑪b 控えの催促
     pg.evaluate("""async()=>{
@@ -466,7 +507,7 @@ with sync_playwright() as p:
     check("初期マスタ.csv は addAll に入れていない", "初期マスタ.csv" not in
           swtxt.split("self.addEventListener")[0].split("const FILES")[1].split("];")[0])
     # 置き場を新しくしたら、開き直しで新しい画面になるか（実際に index.html を差し替える）
-    ip = os.path.join(ROOT, "index.html")
+    ip = os.path.join(WEB, "index.html")
     html = open(ip, encoding="utf-8").read()
     try:
         open(ip, "w", encoding="utf-8", newline="").write(
@@ -481,7 +522,7 @@ with sync_playwright() as p:
     check("元の版に戻せる", pg.inner_text("#ver") == "v" + ver0, pg.inner_text("#ver"))
 
     # ⑬ 新しい版のお知らせ
-    ip2 = os.path.join(ROOT, "index.html")
+    ip2 = os.path.join(WEB, "index.html")
     html2 = open(ip2, encoding="utf-8").read()
     ver_now = html2.split('const APP_VERSION = "')[1].split('"')[0]
     check("ふだんはお知らせが出ていない",
